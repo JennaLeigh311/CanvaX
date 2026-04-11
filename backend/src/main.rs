@@ -9,7 +9,7 @@ mod state;
 mod ws;
 
 use axum::{Router, routing::get};
-use config::AppConfig;
+use config::Config;
 use db::create_pool;
 use error::AppError;
 use state::AppState;
@@ -19,11 +19,10 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    dotenv::dotenv().ok();
     init_tracing();
 
-    let config = AppConfig::from_env()?;
-    let pool = create_pool(&config.database_url)?;
+    let config = Config::from_env();
+    let pool = create_pool(&config.database_url).await?;
     let app_state = AppState::new(pool);
 
     let cors = CorsLayer::new()
@@ -37,8 +36,14 @@ async fn main() -> Result<(), AppError> {
         .with_state(app_state)
         .layer(cors);
 
-    let addr = config.socket_addr()?;
-    info!(%addr, "CanvaX backend starting");
+    let addr = config.socket_addr();
+    info!(
+        %addr,
+        canvas_width = config.canvas_width,
+        canvas_height = config.canvas_height,
+        max_sessions = config.max_sessions,
+        "CanvaX backend starting"
+    );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
