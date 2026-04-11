@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# General
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+.vscode/
+.idea/
+
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Node.js / Frontend
+node_modules/
+**/node_modules/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
