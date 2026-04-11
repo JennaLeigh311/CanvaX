@@ -1,18 +1,28 @@
 // Sets up the shared PostgreSQL connection pool used across request handlers.
-use crate::error::AppError;
+use crate::config::Config;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
-pub async fn create_pool(database_url: &str) -> Result<PgPool, AppError> {
+pub async fn create_pool(config: &Config) -> PgPool {
     let pool = PgPoolOptions::new()
-        .max_connections(20)
-        .connect(database_url)
+        .max_connections(10)
+        .connect(&config.database_url)
         .await
-        .map_err(AppError::from)?;
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to connect to PostgreSQL using DATABASE_URL='{}': {}",
+                config.database_url, error
+            )
+        });
+
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .unwrap_or_else(|error| panic!("failed to run database migrations on startup: {error}"));
 
     sqlx::query_scalar::<_, i32>("SELECT 1")
         .fetch_one(&pool)
         .await
-        .map_err(AppError::from)?;
+        .unwrap_or_else(|error| panic!("database health check failed after pool creation: {error}"));
 
-    Ok(pool)
+    pool
 }

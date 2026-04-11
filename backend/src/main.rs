@@ -22,7 +22,7 @@ async fn main() -> Result<(), AppError> {
     init_tracing();
 
     let config = Config::from_env();
-    let pool = create_pool(&config.database_url).await?;
+    let pool = create_pool(&config).await;
     let app_state = AppState::new(pool);
 
     let cors = CorsLayer::new()

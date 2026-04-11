@@ -52,7 +52,7 @@ function App() {
     <main className="app-shell">
       <header className="app-header">
         <h1>CanvaX</h1>
-        <p>Collaborative pixel art for education nonprofits</p>
+        <p>Collaborative pixel art canvas</p>
         <span className="status-pill">WebSocket: {connectionStatus}</span>
       </header>
 
