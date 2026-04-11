@@ -31,6 +31,7 @@ async fn main() -> Result<(), AppError> {
     // and all clones must point to the same shared pool/config instance.
     let app_state: SharedState = AppState::new(pool, config);
 
+    // Allow all origins during local development so frontend and backend can iterate quickly.
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -38,6 +39,7 @@ async fn main() -> Result<(), AppError> {
 
     let app = Router::new()
         .route("/", get(handlers::health_check))
+        .nest("/api", handlers::routes())
         .route("/ws", get(ws::ws_handler))
         .with_state(app_state)
         .layer(cors);

@@ -10,6 +10,8 @@ use std::{fmt, net::AddrParseError};
 #[derive(Debug)]
 pub enum AppError {
     Config(String),
+    Validation(String),
+    NotFound(String),
     Database(sqlx::Error),
     Io(std::io::Error),
     Address(AddrParseError),
@@ -20,6 +22,8 @@ impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Config(message) => write!(f, "configuration error: {message}"),
+            Self::Validation(message) => write!(f, "validation error: {message}"),
+            Self::NotFound(message) => write!(f, "not found: {message}"),
             Self::Database(err) => write!(f, "database error: {err}"),
             Self::Io(err) => write!(f, "io error: {err}"),
             Self::Address(err) => write!(f, "address parse error: {err}"),
@@ -33,7 +37,8 @@ impl std::error::Error for AppError {}
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Self::Config(message) => (StatusCode::BAD_REQUEST, message),
+            Self::Config(message) | Self::Validation(message) => (StatusCode::BAD_REQUEST, message),
+            Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
             Self::Database(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Database operation failed".to_string(),
