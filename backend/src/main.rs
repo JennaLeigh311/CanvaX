@@ -1,22 +1,52 @@
+// Entry point for the CanvaX backend: loads config, initializes shared state,
+// builds the router, and starts the Axum HTTP/WebSocket server.
+mod config;
+mod db;
+mod error;
+mod handlers;
+mod models;
+mod state;
+mod ws;
+
 use axum::{Router, routing::get};
-use std::net::SocketAddr;
+use config::AppConfig;
+use db::create_pool;
+use error::AppError;
+use state::AppState;
+use tower_http::cors::{Any, CorsLayer};
+use tracing::info;
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
-async fn main() {
-    let app = Router::new().route("/", get(root));
+async fn main() -> Result<(), AppError> {
+    dotenv::dotenv().ok();
+    init_tracing();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("CanvaX backend running on http://{}", addr);
+    let config = AppConfig::from_env()?;
+    let pool = create_pool(&config.database_url)?;
+    let app_state = AppState::new(pool);
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .expect("failed to bind backend listener");
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
-    axum::serve(listener, app)
-        .await
-        .expect("backend server failed");
+    let app = Router::new()
+        .route("/", get(handlers::health_check))
+        .route("/ws", get(ws::ws_handler))
+        .with_state(app_state)
+        .layer(cors);
+
+    let addr = config.socket_addr()?;
+    info!(%addr, "CanvaX backend starting");
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
 
-async fn root() -> &'static str {
-    "CanvaX backend is up"
+fn init_tracing() {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    fmt().with_env_filter(env_filter).with_target(false).init();
 }
