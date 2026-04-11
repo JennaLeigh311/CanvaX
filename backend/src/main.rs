@@ -12,7 +12,7 @@ use axum::{Router, routing::get};
 use config::Config;
 use db::create_pool;
 use error::AppError;
-use state::AppState;
+use state::{AppState, SharedState};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt};
@@ -22,8 +22,14 @@ async fn main() -> Result<(), AppError> {
     init_tracing();
 
     let config = Config::from_env();
+    let addr = config.socket_addr();
+    let canvas_width = config.canvas_width;
+    let canvas_height = config.canvas_height;
+    let max_sessions = config.max_sessions;
     let pool = create_pool(&config).await;
-    let app_state = AppState::new(pool);
+    // Arc is required because Axum clones state across async handlers and tasks,
+    // and all clones must point to the same shared pool/config instance.
+    let app_state: SharedState = AppState::new(pool, config);
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -36,12 +42,11 @@ async fn main() -> Result<(), AppError> {
         .with_state(app_state)
         .layer(cors);
 
-    let addr = config.socket_addr();
     info!(
         %addr,
-        canvas_width = config.canvas_width,
-        canvas_height = config.canvas_height,
-        max_sessions = config.max_sessions,
+        canvas_width,
+        canvas_height,
+        max_sessions,
         "CanvaX backend starting"
     );
 
