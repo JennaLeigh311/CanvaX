@@ -1,19 +1,152 @@
-// Renders the interactive pixel grid and notifies parent state on paint actions.
-import { useEffect, useRef } from 'react'
+// Renders a high-performance pixel canvas and reports paint actions upward.
+import { useEffect, useMemo, useRef } from 'react'
 import type { Pixel } from '../types'
 
 type CanvasProps = {
   width: number
   height: number
-  selectedColor: string
-  pixelMap: Map<string, Pixel>
-  onPaintPixel: (x: number, y: number, color: string) => void
+  pixels: Map<string, Pixel>
+  onPixelClick: (x: number, y: number) => void
+  cellSize?: number
 }
 
-function Canvas({ width, height, selectedColor, pixelMap, onPaintPixel }: CanvasProps) {
+const DEFAULT_COLOR = '#ffffff'
+
+const parsePixelKey = (key: string) => {
+  if (key.includes(',')) {
+    const [xText, yText] = key.split(',')
+    return {
+      x: Number.parseInt(xText, 10),
+      y: Number.parseInt(yText, 10),
+    }
+  }
+
+  const [xText, yText] = key.split('-')
+  return {
+    x: Number.parseInt(xText, 10),
+    y: Number.parseInt(yText, 10),
+  }
+}
+
+function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const gridCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const isDrawingRef = useRef(false)
   const paintedInStrokeRef = useRef(new Set<string>())
-  const cells = []
+  const previousPixelsRef = useRef<Map<string, Pixel>>(new Map())
+
+  const canvasWidth = useMemo(() => width * cellSize, [width, cellSize])
+  const canvasHeight = useMemo(() => height * cellSize, [height, cellSize])
+
+  const drawCell = (
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    color: string,
+  ) => {
+    context.fillStyle = color
+    context.fillRect(x * cellSize, y * cellSize, cellSize, cellSize)
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return
+    }
+
+    // We only repaint cells whose value changed between frames.
+    // This keeps redraw work proportional to edits, not canvas size.
+    const previous = previousPixelsRef.current
+    const changedKeys = new Set<string>()
+
+    for (const [key, pixel] of pixels.entries()) {
+      const prior = previous.get(key)
+      if (!prior || prior.color !== pixel.color) {
+        changedKeys.add(key)
+      }
+    }
+
+    for (const key of previous.keys()) {
+      if (!pixels.has(key)) {
+        changedKeys.add(key)
+      }
+    }
+
+    for (const key of changedKeys) {
+      const { x, y } = parsePixelKey(key)
+      if (Number.isNaN(x) || Number.isNaN(y)) {
+        continue
+      }
+
+      const pixel = pixels.get(key)
+      drawCell(context, x, y, pixel?.color ?? DEFAULT_COLOR)
+    }
+
+    previousPixelsRef.current = new Map(pixels)
+  }, [pixels, cellSize])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return
+    }
+
+    context.fillStyle = DEFAULT_COLOR
+    context.fillRect(0, 0, canvasWidth, canvasHeight)
+
+    previousPixelsRef.current = new Map()
+    for (const [key, pixel] of pixels.entries()) {
+      const { x, y } = parsePixelKey(key)
+      if (Number.isNaN(x) || Number.isNaN(y)) {
+        continue
+      }
+      drawCell(context, x, y, pixel.color)
+    }
+
+    previousPixelsRef.current = new Map(pixels)
+  }, [width, height, cellSize, canvasWidth, canvasHeight])
+
+  useEffect(() => {
+    const gridCanvas = gridCanvasRef.current
+    if (!gridCanvas) {
+      return
+    }
+
+    const gridContext = gridCanvas.getContext('2d')
+    if (!gridContext) {
+      return
+    }
+
+    gridContext.clearRect(0, 0, canvasWidth, canvasHeight)
+    gridContext.strokeStyle = 'rgba(17, 24, 39, 0.16)'
+    gridContext.lineWidth = 1
+
+    for (let x = 0; x <= width; x += 1) {
+      const offsetX = x * cellSize + 0.5
+      gridContext.beginPath()
+      gridContext.moveTo(offsetX, 0)
+      gridContext.lineTo(offsetX, canvasHeight)
+      gridContext.stroke()
+    }
+
+    for (let y = 0; y <= height; y += 1) {
+      const offsetY = y * cellSize + 0.5
+      gridContext.beginPath()
+      gridContext.moveTo(0, offsetY)
+      gridContext.lineTo(canvasWidth, offsetY)
+      gridContext.stroke()
+    }
+  }, [width, height, cellSize, canvasWidth, canvasHeight])
 
   useEffect(() => {
     const stopDrawing = () => {
@@ -22,65 +155,69 @@ function Canvas({ width, height, selectedColor, pixelMap, onPaintPixel }: Canvas
     }
 
     window.addEventListener('pointerup', stopDrawing)
+    window.addEventListener('pointercancel', stopDrawing)
+
     return () => {
       window.removeEventListener('pointerup', stopDrawing)
+      window.removeEventListener('pointercancel', stopDrawing)
     }
   }, [])
 
-  const paintIfNeeded = (x: number, y: number) => {
+  const paintFromPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const rect = canvas.getBoundingClientRect()
+    const localX = event.clientX - rect.left
+    const localY = event.clientY - rect.top
+    const x = Math.floor(localX / cellSize)
+    const y = Math.floor(localY / cellSize)
+
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return
+    }
+
     const key = `${x}-${y}`
     if (paintedInStrokeRef.current.has(key)) {
       return
     }
 
     paintedInStrokeRef.current.add(key)
-    onPaintPixel(x, y, selectedColor)
-  }
 
-  const handlePointerDown = (x: number, y: number) => {
-    isDrawingRef.current = true
-    paintedInStrokeRef.current.clear()
-    paintIfNeeded(x, y)
-  }
-
-  const handlePointerEnter = (x: number, y: number) => {
-    if (!isDrawingRef.current) {
-      return
-    }
-
-    paintIfNeeded(x, y)
-  }
-
-  // Precompute all cells so render logic is explicit and easy to read.
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const key = `${x}-${y}`
-      const pixel = pixelMap.get(key)
-
-      cells.push(
-        <button
-          key={key}
-          className="pixel-cell"
-          style={{ backgroundColor: pixel?.color ?? '#ffffff' }}
-          onPointerDown={() => handlePointerDown(x, y)}
-          onPointerEnter={() => handlePointerEnter(x, y)}
-          title={`Paint (${x}, ${y})`}
-          aria-label={`Paint pixel ${x}, ${y}`}
-        />,
-      )
-    }
+    // Optimistic update flow: parent updates local state immediately so the user
+    // sees paint feedback instantly while websocket confirmation arrives later.
+    onPixelClick(x, y)
   }
 
   return (
     <section className="canvas-panel" aria-label="Pixel canvas">
-      <div
-        className="pixel-grid"
-        style={{
-          gridTemplateColumns: `repeat(${width}, 1fr)`,
-          gridTemplateRows: `repeat(${height}, 1fr)`,
-        }}
-      >
-        {cells}
+      <div className="pixel-canvas-stack" style={{ width: canvasWidth, height: canvasHeight }}>
+        <canvas
+          ref={canvasRef}
+          width={canvasWidth}
+          height={canvasHeight}
+          className="pixel-canvas pixel-canvas-layer"
+          onPointerDown={(event) => {
+            isDrawingRef.current = true
+            paintedInStrokeRef.current.clear()
+            paintFromPointer(event)
+          }}
+          onPointerMove={(event) => {
+            if (!isDrawingRef.current) {
+              return
+            }
+            paintFromPointer(event)
+          }}
+        />
+        <canvas
+          ref={gridCanvasRef}
+          width={canvasWidth}
+          height={canvasHeight}
+          className="pixel-grid-overlay pixel-canvas-layer"
+          aria-hidden="true"
+        />
       </div>
     </section>
   )

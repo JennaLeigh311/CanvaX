@@ -10,6 +10,7 @@ type UseWebSocketOptions = {
 
 const BACKOFF_START_MS = 1000
 const BACKOFF_MAX_MS = 30000
+const CLEAR_COLOR = '#ffffff'
 
 const toPixelKey = (x: number, y: number) => `${x},${y}`
 
@@ -202,6 +203,18 @@ export function useCanvasWebSocket(canvasId: string) {
 
   const sendPixelUpdate = useCallback(
     (event: PixelUpdateEvent) => {
+      // Optimistic local apply so interaction remains responsive even if the
+      // websocket is reconnecting and before server confirmation arrives.
+      setPixels((previous) => {
+        const next = new Map(previous)
+        next.set(toPixelKey(event.x, event.y), {
+          x: event.x,
+          y: event.y,
+          color: event.color,
+        })
+        return next
+      })
+
       const socket = socketRef.current
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         return
@@ -220,12 +233,18 @@ export function useCanvasWebSocket(canvasId: string) {
     [sessionId],
   )
 
+  const clearPixelsOptimistic = useCallback(() => {
+    setPixels(new Map())
+  }, [])
+
   return {
     pixels,
     sessionId,
     activeUsers,
     sendPixelUpdate,
+    clearPixelsOptimistic,
     connectionStatus,
+    clearColor: CLEAR_COLOR,
   }
 }
 

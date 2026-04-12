@@ -21,6 +21,13 @@
   color: #374151;
 }
 
+.header-status-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .status-pill {
   display: inline-block;
   padding: 4px 10px;
@@ -72,14 +79,35 @@
   border-color: #111827;
 }
 
-.clear-button {
-  margin-left: auto;
-  padding: 8px 12px;
-  border: 1px solid #b91c1c;
+.users-counter {
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.connection-indicator {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  border: 1px solid transparent;
+}
+
+.status-connected {
+  background: #e6f4ea;
+  color: #14532d;
+  border-color: #86efac;
+}
+
+.status-reconnecting {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fbbf24;
+}
+
+.status-disconnected {
   background: #fee2e2;
-  color: #7f1d1d;
-  border-radius: 10px;
-  cursor: pointer;
+  color: #991b1b;
+  border-color: #fca5a5;
 }
 
 /* Canvas styles to keep pixel sizing consistent and grid readable. */
@@ -91,36 +119,35 @@
   background: #ffffff;
 }
 
-.pixel-grid {
-  display: grid;
-  gap: 1px;
-  background: #d1d5db;
-  width: fit-content;
+.pixel-canvas {
+  display: block;
+  border: 1px solid #d1d5db;
   touch-action: none;
   user-select: none;
-}
-
-.pixel-cell {
-  width: 24px;
-  height: 24px;
-  border: none;
-  padding: 0;
   cursor: crosshair;
 }
 
-.pixel-cell:hover {
+.pixel-canvas-stack {
+  position: relative;
+}
+
+.pixel-canvas-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.pixel-grid-overlay {
+  pointer-events: none;
+}
+
+.pixel-canvas:hover {
   outline: 2px solid #111827;
-  outline-offset: -2px;
+  outline-offset: 0;
 }
 
 @media (max-width: 640px) {
   .app-shell {
     margin: 10px auto;
     padding: 12px;
-  }
-
-  .pixel-cell {
-    width: 18px;
-    height: 18px;
   }
 }

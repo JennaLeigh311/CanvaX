@@ -1,13 +1,12 @@
 // Provides drawing controls such as color selection and canvas utility actions.
 type ToolbarProps = {
   selectedColor: string
-  onSelectColor: (color: string) => void
-  onClear: () => void
+  onColorChange: (color: string) => void
 }
 
 const PALETTE = ['#1f2937', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6']
 
-function Toolbar({ selectedColor, onSelectColor, onClear }: ToolbarProps) {
+function Toolbar({ selectedColor, onColorChange }: ToolbarProps) {
   return (
     <section className="toolbar" aria-label="Canvas tools">
       <div className="tool-group">
@@ -18,7 +17,7 @@ function Toolbar({ selectedColor, onSelectColor, onClear }: ToolbarProps) {
               key={color}
               className="swatch"
               style={{ backgroundColor: color }}
-              onClick={() => onSelectColor(color)}
+              onClick={() => onColorChange(color)}
               aria-label={`Select color ${color}`}
               data-active={selectedColor === color}
             />
@@ -34,13 +33,9 @@ function Toolbar({ selectedColor, onSelectColor, onClear }: ToolbarProps) {
           id="color-picker"
           type="color"
           value={selectedColor}
-          onChange={(event) => onSelectColor(event.target.value)}
+          onChange={(event) => onColorChange(event.target.value)}
         />
       </div>
-
-      <button className="clear-button" onClick={onClear}>
-        Clear canvas
-      </button>
     </section>
   )
 }
