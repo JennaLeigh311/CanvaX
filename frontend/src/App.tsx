@@ -64,7 +64,6 @@ function App() {
   const [classroomWidth, setClassroomWidth] = useState(24)
   const [classroomHeight, setClassroomHeight] = useState(16)
   const [joinQuery, setJoinQuery] = useState('')
-  const [connectionCodeNotice, setConnectionCodeNotice] = useState<string | null>(null)
   const [pathname, setPathname] = useState(readPathname)
 
   const canvasId = selectedCanvas?.id ?? ''
@@ -202,8 +201,6 @@ function App() {
 
     try {
       const created = await createCanvas(`Classroom: ${name}`, classroomWidth, classroomHeight)
-      const code = toConnectionCode(created)
-      setConnectionCodeNotice(`Classroom code: ${code}`)
       setClassroomName('')
       await loadLobby()
       setDialogMode(null)
@@ -293,12 +290,6 @@ function App() {
               Join Canvas
             </button>
           </div>
-
-          {connectionCodeNotice ? (
-            <p className="lobby-note">{connectionCodeNotice}</p>
-          ) : (
-            <p className="lobby-note">Use classroom codes to invite your students quickly.</p>
-          )}
         </section>
 
         <section className="lobby-list-panel" aria-label="Available canvases">
@@ -337,7 +328,6 @@ function App() {
                   <p>
                     {canvas.width}x{canvas.height}
                   </p>
-                  <p>Code: {toConnectionCode(canvas)}</p>
                 </div>
 
                 <button
