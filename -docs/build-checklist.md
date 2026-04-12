@@ -1,10 +1,10 @@
 # Build Verification Checklist
 
-This checklist documents required verification and the expected output for each step.
+This checklist tracks verification for setup, database, REST API, and real-time WebSocket behavior.
 
-## 1. Backend compile check
+## Phase 0 Environment Checks
 
-Command:
+### 1) Backend compile check
 
 ```bash
 cd backend
@@ -12,58 +12,115 @@ source "$HOME/.cargo/env"
 cargo check
 ```
 
-Expected output:
+Expected:
 - Build completes successfully.
-- Final line includes: Finished `dev` profile ...
-- Warnings may appear, but there should be no compile errors.
+- Final line includes `Finished dev profile ...`.
+- Warnings are acceptable; compile errors are not.
 
-## 2. Frontend dev server startup
-
-Command:
+### 2) Frontend dev server startup
 
 ```bash
 cd frontend
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Expected output:
-- Vite starts and prints a local URL.
-- Output includes: `VITE ... ready` and `Local: http://127.0.0.1:5173/`.
+Expected:
+- Vite starts and prints local URL.
+- Output includes `VITE ... ready` and `Local: http://127.0.0.1:5173/`.
 
-## 3. Docker Compose PostgreSQL startup
-
-Command:
+### 3) Docker PostgreSQL startup
 
 ```bash
 docker compose up -d
-```
-
-Expected output:
-- PostgreSQL 15 image/container starts successfully.
-- Container `canvax-db` status becomes Running.
-
-
-## 4. Backend database init script readiness check
-
-Command:
-
-```bash
 ./backend/scripts/init.sh
 ```
 
-Expected output:
-- Script starts compose services and waits for PostgreSQL readiness.
-- Final output: `Database ready`.
+Expected:
+- Container `canvax-db` is running.
+- Script prints `Database ready`.
 
-## 5. PostgreSQL connectivity and database existence
-
-Command:
+### 4) PostgreSQL connectivity
 
 ```bash
 psql 'postgres://user:password@127.0.0.1:5432/canvax' -c 'SELECT current_database(), current_user;'
 psql 'postgres://user:password@127.0.0.1:5432/canvax' -c "SELECT datname FROM pg_database WHERE datname='canvax';"
 ```
 
-Expected output:
+Expected:
 - First query returns `canvax` and `user`.
 - Second query returns one row with `canvax`.
+
+## Phase 1 Database and Migration Checks
+
+### 5) SQLx migration status
+
+```bash
+cd backend
+source "$HOME/.cargo/env"
+DATABASE_URL='postgres://user:password@127.0.0.1:5432/canvax' sqlx migrate info
+```
+
+Expected:
+- Migrations listed in order:
+- create canvases table
+- create pixels table
+- create sessions table
+
+### 6) Apply migrations
+
+```bash
+cd backend
+source "$HOME/.cargo/env"
+DATABASE_URL='postgres://user:password@127.0.0.1:5432/canvax' sqlx migrate run
+```
+
+Expected:
+- All pending migrations apply successfully.
+
+## Phase 2 REST API Checks
+
+### 7) Run API integration tests
+
+```bash
+cd backend
+source "$HOME/.cargo/env"
+TEST_DATABASE_URL='postgres://user:password@127.0.0.1:5432/canvax' cargo test --test api_test
+```
+
+Expected:
+- `api_canvas_crud_flow ... ok`
+
+### 8) Optional manual curl checks
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/api/canvases -H 'content-type: application/json' -d '{"name":"Demo","width":32,"height":32}'
+curl -sS -X POST http://127.0.0.1:8081/api/canvases -H 'content-type: application/json' -d '{"name":"   ","width":32,"height":32}'
+```
+
+Expected:
+- Valid create returns HTTP 201.
+- Invalid create returns HTTP 400 and JSON `message`.
+
+## Phase 3 WebSocket and Real-Time Checks
+
+### 9) Run WebSocket convergence test
+
+```bash
+cd backend
+source "$HOME/.cargo/env"
+TEST_DATABASE_URL='postgres://user:password@127.0.0.1:5432/canvax' cargo test --test ws_test
+```
+
+Expected:
+- `websocket_clients_converge_and_receive_session_counts ... ok`
+
+### 10) Full backend test suite
+
+```bash
+cd backend
+source "$HOME/.cargo/env"
+TEST_DATABASE_URL='postgres://user:password@127.0.0.1:5432/canvax' cargo test
+```
+
+Expected:
+- `api_test`, `db_test`, and `ws_test` all pass.

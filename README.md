@@ -6,48 +6,92 @@ Collaborative pixel art platform for educational nonprofits.
 
 ```text
 canvax/
+├── -docs/
 ├── README.md
 ├── .gitignore
+├── docker-compose.yml
 ├── backend/
 └── frontend/
 ```
 
 ## Directory Guide
 
-- `backend/`
-	- Rust service (Axum + PostgreSQL + WebSockets)
-	- Owns APIs, event handling, and persistence
+### backend/
 
-- `frontend/`
-	- TypeScript + React client
-	- Owns pixel canvas UI, collaboration UX, and WebSocket client state sync
+Rust service (Axum + PostgreSQL + WebSockets).
 
-## Run Each Service
+- Owns REST API, real-time state sync, and persistence
+- Includes SQLx migrations, integration tests, and Docker DB bootstrap script
 
-This repository is in Phase 0 setup, so these commands are the intended defaults once each side is initialized.
+### frontend/
 
-### Backend (Rust)
+TypeScript + React (Vite) client application.
+
+- Owns canvas UI, tools, and client-side WebSocket integration
+
+### -docs/
+
+Documentation and verification artifacts.
+
+- Build and verification checklists used during phased implementation
+
+## Quick Start
+
+### 1) Start PostgreSQL (Docker)
+
+```bash
+docker compose up -d
+./backend/scripts/init.sh
+```
+
+### 2) Run backend
 
 ```bash
 cd backend
+source "$HOME/.cargo/env"
 cargo run
 ```
 
-### Frontend (TypeScript + React)
+Backend defaults to values from `backend/.env`.
+
+### 3) Run frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+## Backend Endpoints
+
+- Health: `GET /`
+- Canvas REST API (Phase 2)
+- `POST /api/canvases`
+- `GET /api/canvases`
+- `GET /api/canvases/:id`
+- `DELETE /api/canvases/:id`
+- WebSocket canvas sync (Phase 3)
+- `GET /ws/canvas/:id`
+
+## Testing
+
+```bash
+cd backend
+cargo test
 ```
 
 ## Current Status
 
-- [x] Monorepo scaffold created
-- [ ] Backend Axum hello world
-- [ ] Frontend React hello world
+- [x] Phase 0: Monorepo and environment setup
+- [x] Phase 1: SQL schema, migrations, and DB model structs
+- [x] Phase 2: Canvas REST API and error handling
+- [x] Phase 3: WebSocket server, in-memory registry, optimistic concurrency, WS integration tests
 
-## Notes for Contributors
+## Notes
 
-- Keep backend and frontend setup isolated inside their subdirectories.
-- Add service-specific READMEs inside `backend/` and `frontend/` as implementation progresses.
+- If backend startup fails with `Address already in use`, set a different `PORT` in `backend/.env`.
+- If `cargo` is not available in your shell, run:
+
+```bash
+source "$HOME/.cargo/env"
+```
