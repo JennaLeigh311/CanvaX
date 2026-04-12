@@ -65,11 +65,37 @@ function App() {
   const [classroomHeight, setClassroomHeight] = useState(16)
   const [joinQuery, setJoinQuery] = useState('')
   const [pathname, setPathname] = useState(readPathname)
+  const [isRetryingConnection, setIsRetryingConnection] = useState(false)
+  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null)
 
   const canvasId = selectedCanvas?.id ?? ''
-  const { connectionStatus, sendPixelUpdate, pixels, activeUsers } = useCanvasWebSocket(canvasId)
+  const { connectionStatus, sendPixelUpdate, pixels, activeUsers, reconnect } = useCanvasWebSocket(canvasId)
 
   const hasLoadedLobbyRef = useRef(false)
+  const reconnectTimeoutRef = useRef<number | null>(null)
+  const connectionStatusRef = useRef(connectionStatus)
+
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus
+
+    if (connectionStatus === 'open') {
+      setIsRetryingConnection(false)
+      setReconnectNotice(null)
+
+      if (reconnectTimeoutRef.current !== null) {
+        window.clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+    }
+  }, [connectionStatus])
+
+  useEffect(() => {
+    return () => {
+      if (reconnectTimeoutRef.current !== null) {
+        window.clearTimeout(reconnectTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const onPopState = () => {
@@ -246,6 +272,23 @@ function App() {
   }
 
   const connectionLabel = toToolbarStatus(connectionStatus)
+
+  const handleReconnectAttempt = () => {
+    setReconnectNotice(null)
+    setIsRetryingConnection(true)
+    reconnect()
+
+    if (reconnectTimeoutRef.current !== null) {
+      window.clearTimeout(reconnectTimeoutRef.current)
+    }
+
+    reconnectTimeoutRef.current = window.setTimeout(() => {
+      if (connectionStatusRef.current !== 'open') {
+        setIsRetryingConnection(false)
+        setReconnectNotice('Could not reconnect. The hosting of this canvas ended.')
+      }
+    }, 4500)
+  }
 
   const handlePaintPixel = (x: number, y: number) => {
     if (!selectedCanvas) {
@@ -484,7 +527,6 @@ function App() {
         <h1>CanvaX</h1>
         <p>{selectedCanvas?.name ?? 'Collaborative pixel art canvas'}</p>
         <div className="header-status-row" aria-live="polite">
-          <span className="status-pill">WebSocket: {connectionStatus}</span>
           <span className="users-counter">Active users: {activeUsers}</span>
           <span
             className={`connection-indicator ${
@@ -497,6 +539,15 @@ function App() {
           >
             {connectionLabel}
           </span>
+          {connectionLabel === 'Disconnected' ? (
+            <button
+              className="lobby-refresh-button"
+              onClick={handleReconnectAttempt}
+              disabled={isRetryingConnection}
+            >
+              {isRetryingConnection ? 'Reconnecting...' : 'Refresh Connection'}
+            </button>
+          ) : null}
           <button
             className="lobby-back-button"
             onClick={() => {
@@ -506,6 +557,7 @@ function App() {
             Back to Lobby
           </button>
         </div>
+        {reconnectNotice ? <p className="header-connection-notice">{reconnectNotice}</p> : null}
       </header>
 
       <Toolbar selectedColor={selectedColor} onColorChange={setSelectedColor} />

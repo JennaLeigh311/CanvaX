@@ -8,8 +8,6 @@ type UseWebSocketOptions = {
   url: string
 }
 
-const BACKOFF_START_MS = 1000
-const BACKOFF_MAX_MS = 30000
 const CLEAR_COLOR = '#ffffff'
 
 const toPixelKey = (x: number, y: number) => `${x},${y}`
@@ -40,7 +38,7 @@ export function useCanvasWebSocket(canvasId: string) {
 
   const socketRef = useRef<WebSocket | null>(null)
   const sessionIdRef = useRef<string | null>(null)
-  const retryAttemptRef = useRef(0)
+  const [reconnectToken, setReconnectToken] = useState(0)
 
   useEffect(() => {
     sessionIdRef.current = sessionId
@@ -145,6 +143,7 @@ export function useCanvasWebSocket(canvasId: string) {
         socketRef.current.close()
         socketRef.current = null
       }
+      setConnectionStatus('closed')
       return () => {
         // no-op cleanup when no canvas is selected
       }
@@ -153,13 +152,13 @@ export function useCanvasWebSocket(canvasId: string) {
     const baseUrl = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'
     const endpoint = `${baseUrl}/ws/canvas/${canvasId}`
     let isActive = true
-    let reconnectTimer: number | null = null
 
     const connect = () => {
       if (!isActive) {
         return
       }
 
+      setConnectionStatus('connecting')
       const socket = new WebSocket(endpoint)
       socketRef.current = socket
 
@@ -168,7 +167,6 @@ export function useCanvasWebSocket(canvasId: string) {
           return
         }
 
-        retryAttemptRef.current = 0
         setActiveUsers(0)
         sessionIdRef.current = null
         setSessionId(null)
@@ -195,20 +193,6 @@ export function useCanvasWebSocket(canvasId: string) {
         }
 
         setConnectionStatus('closed')
-
-        // Reconnection strategy: exponential backoff (1s -> 30s max) with
-        // jitter to avoid synchronized reconnect spikes after outages.
-        const backoff = Math.min(
-          BACKOFF_START_MS * 2 ** retryAttemptRef.current,
-          BACKOFF_MAX_MS,
-        )
-        const jitter = Math.floor(Math.random() * 500)
-        const delay = backoff + jitter
-        retryAttemptRef.current += 1
-
-        reconnectTimer = window.setTimeout(() => {
-          connect()
-        }, delay)
       })
 
       socket.addEventListener('error', () => {
@@ -225,16 +209,12 @@ export function useCanvasWebSocket(canvasId: string) {
     return () => {
       isActive = false
 
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer)
-      }
-
       if (socketRef.current) {
         socketRef.current.close()
         socketRef.current = null
       }
     }
-  }, [canvasId, handleRawMessage])
+  }, [canvasId, handleRawMessage, reconnectToken])
 
   const sendPixelUpdate = useCallback(
     (event: PixelUpdateEvent) => {
@@ -272,6 +252,19 @@ export function useCanvasWebSocket(canvasId: string) {
     setPixels(new Map())
   }, [])
 
+  const reconnect = useCallback(() => {
+    if (!canvasId) {
+      return
+    }
+
+    if (socketRef.current) {
+      socketRef.current.close()
+      socketRef.current = null
+    }
+
+    setReconnectToken((previous) => previous + 1)
+  }, [canvasId])
+
   const effectiveConnectionStatus: ConnectionState = canvasId ? connectionStatus : 'closed'
 
   return {
@@ -280,6 +273,7 @@ export function useCanvasWebSocket(canvasId: string) {
     activeUsers,
     sendPixelUpdate,
     clearPixelsOptimistic,
+    reconnect,
     connectionStatus: effectiveConnectionStatus,
     clearColor: CLEAR_COLOR,
   }

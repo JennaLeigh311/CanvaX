@@ -28,6 +28,12 @@
   flex-wrap: wrap;
 }
 
+.header-connection-notice {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  font-size: 0.92rem;
+}
+
 .lobby-back-button {
   border: 1px solid #cbd5e1;
   background: #f8fafc;
