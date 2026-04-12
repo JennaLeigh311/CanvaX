@@ -96,6 +96,8 @@
   gap: 1px;
   background: #d1d5db;
   width: fit-content;
+  touch-action: none;
+  user-select: none;
 }
 
 .pixel-cell {
