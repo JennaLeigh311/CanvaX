@@ -1,4 +1,4 @@
-// WebSocket entrypoints and connection lifecycle hooks for real-time sync.
+//! Websocket entrypoints and connection lifecycle logic for real-time sync.
 use axum::{
     extract::{Path, State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::Response,
@@ -41,6 +41,21 @@ enum WsOutboundMessage {
 }
 
 /// Upgrades an HTTP request to a canvas-scoped websocket connection.
+///
+/// # Parameters
+///
+/// - `canvas_id`: Canvas id extracted from route params.
+/// - `ws`: Axum websocket upgrade extractor.
+/// - `state`: Shared application state for database and room coordination.
+///
+/// # Returns
+///
+/// Returns an upgraded websocket [`Response`] when session setup succeeds.
+///
+/// # Errors
+///
+/// Returns [`AppError`] when room loading, session insert, canvas lookup, or
+/// subscription setup fails.
 pub async fn ws_handler(
     Path(canvas_id): Path<Uuid>,
     ws: WebSocketUpgrade,

@@ -1,4 +1,4 @@
-// Defines database-backed models and transport DTOs used by APIs and WebSockets.
+//! Database models and transport DTOs shared across REST and websocket layers.
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;

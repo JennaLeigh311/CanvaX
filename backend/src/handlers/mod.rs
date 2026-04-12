@@ -1,4 +1,4 @@
-// HTTP handlers and API route assembly for canvas CRUD operations.
+//! HTTP handler implementations and route assembly for backend REST endpoints.
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -18,6 +18,19 @@ use crate::{
 };
 
 /// Builds `/api` routes for canvas management endpoints.
+///
+/// # Parameters
+///
+/// This function does not accept parameters.
+///
+/// # Returns
+///
+/// Returns an Axum [`Router`] scoped to canvas CRUD endpoints.
+///
+/// # Errors
+///
+/// This function does not return errors directly; handler-level errors are
+/// produced at request time by individual route handlers.
 pub fn routes() -> Router<SharedState> {
     Router::new()
         .route("/canvases", post(create_canvas).get(list_canvases))
@@ -25,6 +38,18 @@ pub fn routes() -> Router<SharedState> {
 }
 
 /// Lightweight service health endpoint used by setup checks.
+///
+/// # Parameters
+///
+/// This handler does not accept parameters.
+///
+/// # Returns
+///
+/// Returns a JSON payload indicating the service is reachable.
+///
+/// # Errors
+///
+/// This handler does not return operational errors.
 pub async fn health_check() -> Json<Value> {
     Json(json!({
         "service": "canvax-backend",
@@ -33,6 +58,22 @@ pub async fn health_check() -> Json<Value> {
 }
 
 /// Deployment health endpoint that validates DB reachability and runtime readiness.
+///
+/// # Parameters
+///
+/// - `state`: Shared application state containing database pool and active
+///   in-memory canvas registry.
+///
+/// # Returns
+///
+/// Returns `(200, { status: "ok", db: "connected", active_canvases: N })`
+/// when the database probe succeeds, otherwise
+/// `(503, { status: "degraded", db: "error", error: "..." })`.
+///
+/// # Errors
+///
+/// This handler does not bubble errors; it maps database probe failures to
+/// a degraded 503 health response.
 pub async fn deployment_health(
     State(state): State<SharedState>,
 ) -> (StatusCode, Json<Value>) {
@@ -64,6 +105,20 @@ pub async fn deployment_health(
 }
 
 /// Creates a new canvas after validating input dimensions and name.
+///
+/// # Parameters
+///
+/// - `state`: Shared application state with database pool access.
+/// - `payload`: JSON request body with canvas name and dimensions.
+///
+/// # Returns
+///
+/// Returns `(201, Json<Canvas>)` containing the created canvas record.
+///
+/// # Errors
+///
+/// Returns [`AppError::ValidationError`] for invalid names/dimensions, and
+/// [`AppError::DatabaseError`] for persistence failures.
 pub async fn create_canvas(
     State(state): State<SharedState>,
     Json(payload): Json<CreateCanvasRequest>,
@@ -99,6 +154,20 @@ pub async fn create_canvas(
 }
 
 /// Fetches a canvas and all persisted pixels for initial client state hydration.
+///
+/// # Parameters
+///
+/// - `state`: Shared application state with database pool access.
+/// - `id`: Canvas identifier extracted from route params.
+///
+/// # Returns
+///
+/// Returns `Json<CanvasStateSnapshot>` with metadata and ordered pixel data.
+///
+/// # Errors
+///
+/// Returns [`AppError::NotFound`] when the canvas does not exist and
+/// [`AppError::DatabaseError`] for query failures.
 pub async fn get_canvas(
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
@@ -126,6 +195,18 @@ pub async fn get_canvas(
 }
 
 /// Returns all canvases with summary fields required by the canvas selection screen.
+///
+/// # Parameters
+///
+/// - `state`: Shared application state with database pool access.
+///
+/// # Returns
+///
+/// Returns `Json<Vec<CanvasListItem>>` sorted by creation time descending.
+///
+/// # Errors
+///
+/// Returns [`AppError::DatabaseError`] if loading the canvas list fails.
 pub async fn list_canvases(
     State(state): State<SharedState>,
 ) -> Result<Json<Vec<CanvasListItem>>, AppError> {
@@ -141,6 +222,20 @@ pub async fn list_canvases(
 }
 
 /// Deletes a canvas by id and relies on cascade rules to remove associated pixels.
+///
+/// # Parameters
+///
+/// - `state`: Shared application state with database pool access.
+/// - `id`: Canvas identifier extracted from route params.
+///
+/// # Returns
+///
+/// Returns [`StatusCode::NO_CONTENT`] when deletion succeeds.
+///
+/// # Errors
+///
+/// Returns [`AppError::NotFound`] if the canvas does not exist and
+/// [`AppError::DatabaseError`] if deletion fails.
 pub async fn delete_canvas(
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,

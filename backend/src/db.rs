@@ -1,7 +1,21 @@
-// Sets up the shared PostgreSQL connection pool used across request handlers.
+//! Database bootstrap helpers for PostgreSQL pool creation and startup checks.
 use crate::config::Config;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
+/// Creates and validates the shared PostgreSQL connection pool.
+///
+/// # Parameters
+///
+/// - `config`: Loaded runtime configuration containing the database URL.
+///
+/// # Returns
+///
+/// Returns a ready-to-use [`PgPool`] with startup migrations applied.
+///
+/// # Errors
+///
+/// This function panics if connecting to PostgreSQL fails, startup migrations
+/// fail, or the post-connect health probe query fails.
 pub async fn create_pool(config: &Config) -> PgPool {
     let pool = PgPoolOptions::new()
         .max_connections(10)

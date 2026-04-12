@@ -1,6 +1,13 @@
-// Loads required backend configuration from environment variables using dotenv.
+//! Environment-backed runtime configuration for the CanvaX backend.
+//!
+//! This module is responsible for loading required process configuration from
+//! environment variables and exposing typed values to the rest of the backend.
 use std::{env, net::SocketAddr};
 
+/// Runtime configuration required to start the backend service.
+///
+/// The values are loaded from environment variables through [`Config::from_env`]
+/// and then reused by database, websocket, and HTTP bootstrap code.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// PostgreSQL connection string used by sqlx to create the application pool.
@@ -18,6 +25,23 @@ pub struct Config {
 }
 
 impl Config {
+    /// Loads required configuration values from environment variables.
+    ///
+    /// # Parameters
+    ///
+    /// This function does not accept parameters; it reads from process
+    /// environment variables (`DATABASE_URL`, `HOST`, `PORT`,
+    /// `CANVAS_WIDTH`, `CANVAS_HEIGHT`, and `MAX_SESSIONS`).
+    ///
+    /// # Returns
+    ///
+    /// Returns a fully-populated [`Config`] instance when all required
+    /// variables are present and parseable.
+    ///
+    /// # Errors
+    ///
+    /// This function panics if a required variable is missing, empty, or has
+    /// an invalid type.
     pub fn from_env() -> Self {
         dotenv::dotenv().ok();
 
@@ -31,6 +55,20 @@ impl Config {
         }
     }
 
+    /// Builds the socket address used by Axum to bind the HTTP server.
+    ///
+    /// # Parameters
+    ///
+    /// - `self`: Configuration containing `host` and `port`.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`SocketAddr`] parsed from `<host>:<port>`.
+    ///
+    /// # Errors
+    ///
+    /// This function panics if the host/port combination cannot be parsed
+    /// into a valid socket address.
     pub fn socket_addr(&self) -> SocketAddr {
         let combined = format!("{}:{}", self.host, self.port);
         combined

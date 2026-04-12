@@ -1,4 +1,4 @@
-// Library exports for reusable backend modules consumed by integration tests and binary entrypoint.
+//! Reusable backend library exports shared by tests and the binary entrypoint.
 pub mod config;
 pub mod db;
 pub mod error;

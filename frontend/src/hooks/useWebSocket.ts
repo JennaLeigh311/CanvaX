@@ -138,7 +138,6 @@ export function useCanvasWebSocket(canvasId: string) {
     shouldReconnectRef.current = true
 
     if (!canvasId) {
-      setConnectionStatus('closed')
       return () => {
         shouldReconnectRef.current = false
       }
@@ -152,7 +151,6 @@ export function useCanvasWebSocket(canvasId: string) {
         return
       }
 
-      setConnectionStatus('connecting')
       const socket = new WebSocket(endpoint)
       socketRef.current = socket
 
@@ -246,13 +244,15 @@ export function useCanvasWebSocket(canvasId: string) {
     setPixels(new Map())
   }, [])
 
+  const effectiveConnectionStatus: ConnectionState = canvasId ? connectionStatus : 'closed'
+
   return {
     pixels,
     sessionId,
     activeUsers,
     sendPixelUpdate,
     clearPixelsOptimistic,
-    connectionStatus,
+    connectionStatus: effectiveConnectionStatus,
     clearColor: CLEAR_COLOR,
   }
 }
@@ -262,15 +262,13 @@ export function useCanvasWebSocket(canvasId: string) {
  */
 export function useWebSocket({ url }: UseWebSocketOptions) {
   const socketRef = useRef<WebSocket | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionState>('connecting')
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionState>('closed')
 
   useEffect(() => {
     if (!url) {
-      setConnectionStatus('closed')
       return
     }
 
-    setConnectionStatus('connecting')
     const socket = new WebSocket(url)
     socketRef.current = socket
 
@@ -304,8 +302,10 @@ export function useWebSocket({ url }: UseWebSocketOptions) {
     [],
   )
 
+  const effectiveConnectionStatus: ConnectionState = url ? connectionStatus : 'closed'
+
   return {
-    connectionStatus,
+    connectionStatus: effectiveConnectionStatus,
     sendEvent,
   }
 }

@@ -1,4 +1,4 @@
-// Shared application state for database/config access and real-time in-memory canvas rooms.
+//! Shared backend state and in-memory room coordination for realtime canvases.
 use crate::{
     config::Config,
     error::AppError,
@@ -88,6 +88,19 @@ pub struct ApplyPixelUpdateResult {
 
 impl AppState {
     /// Creates a new Arc-wrapped shared state object with an empty canvas registry.
+    ///
+    /// # Parameters
+    ///
+    /// - `db`: Shared SQLx PostgreSQL pool.
+    /// - `config`: Loaded runtime configuration.
+    ///
+    /// # Returns
+    ///
+    /// Returns [`SharedState`] as an `Arc<AppState>` suitable for Axum cloning.
+    ///
+    /// # Errors
+    ///
+    /// This constructor does not return errors.
     pub fn new(db: PgPool, config: Config) -> SharedState {
         Arc::new(Self {
             db,
@@ -97,6 +110,20 @@ impl AppState {
     }
 
     /// Loads a canvas room from PostgreSQL into memory if it is not already cached.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Target canvas id to load.
+    /// - `db`: Database pool used for canvas and pixel reads.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when the canvas is already cached or loaded successfully.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] if the canvas does not exist and
+    /// [`AppError::DatabaseError`] / [`AppError::InternalError`] when loading fails.
     pub async fn get_or_load_canvas(&self, id: Uuid, db: &PgPool) -> Result<(), AppError> {
         {
             let rooms = self.canvas_registry.read().await;
@@ -180,6 +207,21 @@ impl AppState {
     }
 
     /// Applies a pixel update to in-memory state and returns accepted/rejected events.
+    ///
+    /// # Parameters
+    ///
+    /// - `canvas_id`: Canvas room identifier.
+    /// - `event`: Incoming pixel update payload from a websocket client.
+    ///
+    /// # Returns
+    ///
+    /// Returns [`ApplyPixelUpdateResult`] with accepted event, optional rejected
+    /// reconciliation event, and persisted pixel payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] when room is missing and
+    /// [`AppError::ValidationError`] for out-of-bounds coordinates.
     pub async fn apply_pixel_update(
         &self,
         canvas_id: Uuid,
@@ -253,6 +295,19 @@ impl AppState {
     }
 
     /// Broadcasts an event to all currently subscribed sessions for a canvas room.
+    ///
+    /// # Parameters
+    ///
+    /// - `canvas_id`: Canvas room identifier.
+    /// - `event`: Event payload to fan out to subscribers.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the event was submitted to the room broadcaster.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] if the target room is not loaded.
     pub async fn broadcast_event(&self, canvas_id: Uuid, event: CanvasEvent) -> Result<(), AppError> {
         let rooms = self.canvas_registry.read().await;
         let room = rooms
@@ -264,6 +319,19 @@ impl AppState {
     }
 
     /// Registers a session in an active room and returns the active session count.
+    ///
+    /// # Parameters
+    ///
+    /// - `canvas_id`: Canvas room identifier.
+    /// - `session_id`: Session identifier to insert.
+    ///
+    /// # Returns
+    ///
+    /// Returns the number of active sessions after insertion.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] if the target room is not loaded.
     pub async fn add_session(&self, canvas_id: Uuid, session_id: Uuid) -> Result<usize, AppError> {
         let mut rooms = self.canvas_registry.write().await;
         let room = rooms
@@ -274,6 +342,18 @@ impl AppState {
     }
 
     /// Returns a room broadcast receiver for the target canvas.
+    ///
+    /// # Parameters
+    ///
+    /// - `canvas_id`: Canvas room identifier.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`broadcast::Receiver`] subscribed to room events.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] if the target room is not loaded.
     pub async fn subscribe_canvas_events(
         &self,
         canvas_id: Uuid,
@@ -286,6 +366,18 @@ impl AppState {
     }
 
     /// Returns a flattened copy of current in-memory pixels for snapshot delivery.
+    ///
+    /// # Parameters
+    ///
+    /// - `canvas_id`: Canvas room identifier.
+    ///
+    /// # Returns
+    ///
+    /// Returns a row-major flattened vector of room pixels.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] if the target room is not loaded.
     pub async fn snapshot_pixels(&self, canvas_id: Uuid) -> Result<Vec<Pixel>, AppError> {
         let rooms = self.canvas_registry.read().await;
         let room = rooms
@@ -299,6 +391,20 @@ impl AppState {
     }
 
     /// Removes a disconnected session from a room and clears empty room metadata.
+    ///
+    /// # Parameters
+    ///
+    /// - `canvas_id`: Canvas room identifier.
+    /// - `session_id`: Session identifier to remove.
+    ///
+    /// # Returns
+    ///
+    /// Returns the number of active sessions remaining after removal.
+    ///
+    /// # Errors
+    ///
+    /// This function does not return errors; missing rooms/sessions are treated
+    /// as no-op conditions.
     pub async fn remove_session(&self, canvas_id: Uuid, session_id: Uuid) -> usize {
         let mut rooms = self.canvas_registry.write().await;
 
