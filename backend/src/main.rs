@@ -35,6 +35,7 @@ async fn main() -> Result<(), AppError> {
 
     let app = Router::new()
         .route("/", get(handlers::health_check))
+        .route("/health", get(handlers::deployment_health))
         .nest("/api", handlers::routes())
         .route("/ws/canvas/{id}", get(ws::ws_handler))
         .with_state(app_state)

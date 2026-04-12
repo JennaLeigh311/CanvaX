@@ -32,6 +32,37 @@ pub async fn health_check() -> Json<Value> {
     }))
 }
 
+/// Deployment health endpoint that validates DB reachability and runtime readiness.
+pub async fn deployment_health(
+    State(state): State<SharedState>,
+) -> (StatusCode, Json<Value>) {
+    let db_probe = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.db)
+        .await;
+
+    match db_probe {
+        Ok(_) => {
+            let active_canvases = state.canvas_registry.read().await.len();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "status": "ok",
+                    "db": "connected",
+                    "active_canvases": active_canvases,
+                })),
+            )
+        }
+        Err(error) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "status": "degraded",
+                "db": "error",
+                "error": error.to_string(),
+            })),
+        ),
+    }
+}
+
 /// Creates a new canvas after validating input dimensions and name.
 pub async fn create_canvas(
     State(state): State<SharedState>,
