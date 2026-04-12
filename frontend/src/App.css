@@ -28,6 +28,15 @@
   flex-wrap: wrap;
 }
 
+.lobby-back-button {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1f2937;
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
 .status-pill {
   display: inline-block;
   padding: 4px 10px;
@@ -110,6 +119,113 @@
   border-color: #fca5a5;
 }
 
+.lobby-create-panel,
+.lobby-list-panel {
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #f9fafb;
+  padding: 14px;
+}
+
+.lobby-create-panel h2,
+.lobby-list-panel h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.lobby-create-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.lobby-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.lobby-field input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+}
+
+.lobby-primary-button,
+.lobby-refresh-button {
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.lobby-primary-button:disabled,
+.lobby-refresh-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.lobby-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.lobby-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.lobby-card {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.lobby-preview-wrapper {
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.lobby-preview-wrapper .canvas-panel {
+  padding: 6px;
+  border: none;
+  border-radius: 8px;
+}
+
+.lobby-card-meta h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.lobby-card-meta p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.lobby-note {
+  margin: 4px 0 10px;
+  color: #475569;
+}
+
+.lobby-error {
+  margin: 0 0 10px;
+  color: #b91c1c;
+}
+
 /* Canvas styles to keep pixel sizing consistent and grid readable. */
 .canvas-panel {
   overflow: auto;
@@ -149,5 +265,10 @@
   .app-shell {
     margin: 10px auto;
     padding: 12px;
+  }
+
+  .lobby-create-form {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 }

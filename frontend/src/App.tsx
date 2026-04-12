@@ -1,9 +1,34 @@
 // Root application component: composes collaboration controls and the pixel canvas.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createCanvas, getCanvasSnapshot, getCanvases } from './api/client'
 import Canvas from './components/Canvas'
 import Toolbar from './components/Toolbar'
 import { useCanvasWebSocket } from './hooks/useWebSocket'
+import type { Canvas as CanvasModel, Pixel } from './types'
 import './App.css'
+
+type LobbyCanvas = {
+  canvas: CanvasModel
+  previewPixels: Map<string, Pixel>
+}
+
+const slugify = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+
+const canvasPath = (canvas: CanvasModel) => `/canvas/${slugify(canvas.name)}`
+
+const readPathname = () => {
+  if (typeof window === 'undefined') {
+    return '/'
+  }
+
+  return window.location.pathname || '/'
+}
 
 const toToolbarStatus = (status: 'connecting' | 'open' | 'closed') => {
   if (status === 'open') {
@@ -20,11 +45,145 @@ const toToolbarStatus = (status: 'connecting' | 'open' | 'closed') => {
 function App() {
   // Tracks the active paint color selected from the toolbar.
   const [selectedColor, setSelectedColor] = useState('#1f2937')
+  const [view, setView] = useState<'lobby' | 'canvas'>('lobby')
+  const [canvases, setCanvases] = useState<LobbyCanvas[]>([])
+  const [selectedCanvas, setSelectedCanvas] = useState<CanvasModel | null>(null)
+  const [isLoadingLobby, setIsLoadingLobby] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
+  const [lobbyError, setLobbyError] = useState<string | null>(null)
+  const [canvasName, setCanvasName] = useState('')
+  const [canvasWidth, setCanvasWidth] = useState(24)
+  const [canvasHeight, setCanvasHeight] = useState(16)
+  const [pathname, setPathname] = useState(readPathname)
 
-  const canvasId = import.meta.env.VITE_CANVAS_ID ?? '00000000-0000-0000-0000-000000000001'
+  const canvasId = selectedCanvas?.id ?? ''
   const { connectionStatus, sendPixelUpdate, pixels, activeUsers } = useCanvasWebSocket(canvasId)
 
+  const hasLoadedLobbyRef = useRef(false)
+
+  useEffect(() => {
+    const onPopState = () => {
+      setPathname(readPathname())
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+    }
+  }, [])
+
+  const navigateTo = (nextPath: string) => {
+    if (readPathname() !== nextPath) {
+      window.history.pushState({}, '', nextPath)
+    }
+    setPathname(nextPath)
+  }
+
+  const loadLobby = async () => {
+    setIsLoadingLobby(true)
+    setLobbyError(null)
+
+    try {
+      const apiCanvases = await getCanvases()
+      const snapshots = await Promise.all(
+        apiCanvases.map(async (canvas) => {
+          try {
+            const snapshot = await getCanvasSnapshot(canvas.id)
+            const previewPixels = new Map<string, Pixel>()
+            for (const pixel of snapshot.pixels) {
+              previewPixels.set(`${pixel.x},${pixel.y}`, pixel)
+            }
+
+            return {
+              canvas,
+              previewPixels,
+            }
+          } catch {
+            return {
+              canvas,
+              previewPixels: new Map<string, Pixel>(),
+            }
+          }
+        }),
+      )
+
+      setCanvases(snapshots)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load canvases'
+      setLobbyError(message)
+    } finally {
+      setIsLoadingLobby(false)
+    }
+  }
+
+  useEffect(() => {
+    if (hasLoadedLobbyRef.current) {
+      return
+    }
+
+    hasLoadedLobbyRef.current = true
+    loadLobby()
+  }, [])
+
+  useEffect(() => {
+    if (pathname === '/' || pathname === '') {
+      setView('lobby')
+      setSelectedCanvas(null)
+      return
+    }
+
+    const canvasPathMatch = pathname.match(/^\/canvas\/([^/]+)$/)
+    if (!canvasPathMatch) {
+      setView('lobby')
+      setSelectedCanvas(null)
+      return
+    }
+
+    const requestedSlug = decodeURIComponent(canvasPathMatch[1])
+    const matched = canvases.find((entry) => slugify(entry.canvas.name) === requestedSlug)
+
+    if (matched) {
+      setSelectedCanvas(matched.canvas)
+      setView('canvas')
+    } else if (!isLoadingLobby) {
+      setLobbyError('Canvas not found. Choose one from the lobby list.')
+      setView('lobby')
+      setSelectedCanvas(null)
+    }
+  }, [pathname, canvases, isLoadingLobby])
+
+  const handleCreateCanvas = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const name = canvasName.trim()
+    if (!name) {
+      setLobbyError('Please enter a canvas title.')
+      return
+    }
+
+    setIsCreating(true)
+    setLobbyError(null)
+
+    try {
+      const created = await createCanvas(name, canvasWidth, canvasHeight)
+      setCanvasName('')
+      await loadLobby()
+      navigateTo(canvasPath(created))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create canvas'
+      setLobbyError(message)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const connectionLabel = toToolbarStatus(connectionStatus)
+
   const handlePaintPixel = (x: number, y: number) => {
+    if (!selectedCanvas) {
+      return
+    }
+
     sendPixelUpdate({
       x,
       y,
@@ -33,33 +192,147 @@ function App() {
     })
   }
 
+  if (view === 'lobby') {
+    return (
+      <main className="app-shell">
+        <header className="app-header">
+          <h1>CanvaX</h1>
+          <p>Create a canvas or join an active one</p>
+        </header>
+
+        <section className="lobby-create-panel" aria-label="Create canvas">
+          <h2>Host a New Canvas</h2>
+          <form className="lobby-create-form" onSubmit={handleCreateCanvas}>
+            <label className="lobby-field">
+              <span>Title</span>
+              <input
+                value={canvasName}
+                onChange={(event) => setCanvasName(event.target.value)}
+                placeholder="Saturday Pixel Jam"
+                maxLength={80}
+                required
+              />
+            </label>
+
+            <label className="lobby-field">
+              <span>Width</span>
+              <input
+                type="number"
+                min={8}
+                max={128}
+                value={canvasWidth}
+                onChange={(event) => setCanvasWidth(Number(event.target.value))}
+                required
+              />
+            </label>
+
+            <label className="lobby-field">
+              <span>Height</span>
+              <input
+                type="number"
+                min={8}
+                max={128}
+                value={canvasHeight}
+                onChange={(event) => setCanvasHeight(Number(event.target.value))}
+                required
+              />
+            </label>
+
+            <button type="submit" className="lobby-primary-button" disabled={isCreating}>
+              {isCreating ? 'Creating...' : 'Host Canvas'}
+            </button>
+          </form>
+        </section>
+
+        <section className="lobby-list-panel" aria-label="Available canvases">
+          <div className="lobby-list-header">
+            <h2>Open Canvases</h2>
+            <button className="lobby-refresh-button" onClick={loadLobby} disabled={isLoadingLobby}>
+              Refresh
+            </button>
+          </div>
+
+          {lobbyError ? <p className="lobby-error">{lobbyError}</p> : null}
+
+          {isLoadingLobby ? <p className="lobby-note">Loading canvases...</p> : null}
+
+          {!isLoadingLobby && canvases.length === 0 ? (
+            <p className="lobby-note">No active canvases yet. Host one to get started.</p>
+          ) : null}
+
+          <div className="lobby-grid">
+            {canvases.map(({ canvas, previewPixels }) => (
+              <article className="lobby-card" key={canvas.id}>
+                <div className="lobby-preview-wrapper">
+                  <Canvas
+                    width={canvas.width}
+                    height={canvas.height}
+                    pixels={previewPixels}
+                    onPixelClick={() => {
+                      // Preview is read-only; selecting happens via join button.
+                    }}
+                    cellSize={4}
+                  />
+                </div>
+
+                <div className="lobby-card-meta">
+                  <h3>{canvas.name}</h3>
+                  <p>
+                    {canvas.width}x{canvas.height}
+                  </p>
+                </div>
+
+                <button
+                  className="lobby-primary-button"
+                  onClick={() => {
+                    navigateTo(canvasPath(canvas))
+                  }}
+                >
+                  Join Canvas
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
         <h1>CanvaX</h1>
-        <p>Collaborative pixel art canvas</p>
+        <p>{selectedCanvas?.name ?? 'Collaborative pixel art canvas'}</p>
         <div className="header-status-row" aria-live="polite">
           <span className="status-pill">WebSocket: {connectionStatus}</span>
           <span className="users-counter">Active users: {activeUsers}</span>
           <span
             className={`connection-indicator ${
-              toToolbarStatus(connectionStatus) === 'Connected'
+              connectionLabel === 'Connected'
                 ? 'status-connected'
-                : toToolbarStatus(connectionStatus) === 'Reconnecting'
+                : connectionLabel === 'Reconnecting'
                   ? 'status-reconnecting'
                   : 'status-disconnected'
             }`}
           >
-            {toToolbarStatus(connectionStatus)}
+            {connectionLabel}
           </span>
+          <button
+            className="lobby-back-button"
+            onClick={() => {
+              navigateTo('/')
+            }}
+          >
+            Back to Lobby
+          </button>
         </div>
       </header>
 
       <Toolbar selectedColor={selectedColor} onColorChange={setSelectedColor} />
 
       <Canvas
-        width={24}
-        height={16}
+        width={selectedCanvas?.width ?? 24}
+        height={selectedCanvas?.height ?? 16}
         pixels={pixels}
         onPixelClick={handlePaintPixel}
         cellSize={24}

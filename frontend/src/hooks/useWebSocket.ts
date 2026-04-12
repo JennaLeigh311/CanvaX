@@ -20,6 +20,15 @@ const readNumber = (value: unknown, fallback = 0) =>
 const readString = (value: unknown, fallback = '') =>
   typeof value === 'string' ? value : fallback
 
+const normalizeSnapshotColor = (pixel: Record<string, unknown>, color: string) => {
+  const updatedBy = pixel.updated_by ?? pixel.updatedBy
+  const isUnpaintedSeedPixel =
+    (updatedBy === null || typeof updatedBy === 'undefined' || updatedBy === '') &&
+    color.toLowerCase() === '#000000'
+
+  return isUnpaintedSeedPixel ? '#ffffff' : color
+}
+
 /**
  * Canvas-focused websocket hook used by the collaborative drawing UI.
  */
@@ -60,7 +69,7 @@ export function useCanvasWebSocket(canvasId: string) {
         const pixel = rawPixel as Record<string, unknown>
         const x = readNumber(pixel.x)
         const y = readNumber(pixel.y)
-        const color = readString(pixel.color, '#000000')
+        const color = normalizeSnapshotColor(pixel, readString(pixel.color, '#000000'))
         nextMap.set(toPixelKey(x, y), { x, y, color })
       }
       setPixels(nextMap)
