@@ -36,7 +36,7 @@ async fn main() -> Result<(), AppError> {
     let app = Router::new()
         .route("/", get(handlers::health_check))
         .nest("/api", handlers::routes())
-        .route("/ws", get(ws::ws_handler))
+        .route("/ws/canvas/{id}", get(ws::ws_handler))
         .with_state(app_state)
         .layer(cors);
 
