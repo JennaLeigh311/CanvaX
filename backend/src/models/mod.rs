@@ -73,6 +73,8 @@ pub struct PixelUpdateEvent {
     pub y: i32,
     /// New color for the pixel in #RRGGBB format.
     pub color: String,
+    /// Client-side timestamp in Unix milliseconds when the edit was produced.
+    pub client_timestamp: u64,
     /// Session identifier that produced this update.
     pub session_id: String,
 }
