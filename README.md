@@ -65,12 +65,12 @@ npm run dev -- --host 127.0.0.1 --port 5173
 ## Backend Endpoints
 
 - Health: `GET /`
-- Canvas REST API (Phase 2)
+- REST APIs:
 - `POST /api/canvases`
 - `GET /api/canvases`
 - `GET /api/canvases/:id`
 - `DELETE /api/canvases/:id`
-- WebSocket canvas sync (Phase 3)
+- WebSocket canvas sync:
 - `GET /ws/canvas/:id`
 
 ## Testing
@@ -79,13 +79,6 @@ npm run dev -- --host 127.0.0.1 --port 5173
 cd backend
 cargo test
 ```
-
-## Current Status
-
-- [x] Phase 0: Monorepo and environment setup
-- [x] Phase 1: SQL schema, migrations, and DB model structs
-- [x] Phase 2: Canvas REST API and error handling
-- [x] Phase 3: WebSocket server, in-memory registry, optimistic concurrency, WS integration tests
 
 ## Notes
 

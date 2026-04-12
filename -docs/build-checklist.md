@@ -2,7 +2,7 @@
 
 This checklist tracks verification for setup, database, REST API, and real-time WebSocket behavior.
 
-## Phase 0 Environment Checks
+## Environment Checks
 
 ### 1) Backend compile check
 
@@ -50,7 +50,7 @@ Expected:
 - First query returns `canvax` and `user`.
 - Second query returns one row with `canvax`.
 
-## Phase 1 Database and Migration Checks
+## Database and Migration Checks
 
 ### 5) SQLx migration status
 
@@ -77,7 +77,7 @@ DATABASE_URL='postgres://user:password@127.0.0.1:5432/canvax' sqlx migrate run
 Expected:
 - All pending migrations apply successfully.
 
-## Phase 2 REST API Checks
+## REST API Checks
 
 ### 7) Run API integration tests
 
@@ -101,7 +101,7 @@ Expected:
 - Valid create returns HTTP 201.
 - Invalid create returns HTTP 400 and JSON `message`.
 
-## Phase 3 WebSocket and Real-Time Checks
+## WebSocket and Real-Time Checks
 
 ### 9) Run WebSocket convergence test
 
