@@ -33,6 +33,7 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
   const gridCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const isDrawingRef = useRef(false)
   const paintedInStrokeRef = useRef(new Set<string>())
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null)
   const previousPixelsRef = useRef<Map<string, Pixel>>(new Map())
 
   const canvasWidth = useMemo(() => width * cellSize, [width, cellSize])
@@ -152,6 +153,7 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
     const stopDrawing = () => {
       isDrawingRef.current = false
       paintedInStrokeRef.current.clear()
+      lastPointRef.current = null
     }
 
     window.addEventListener('pointerup', stopDrawing)
@@ -179,16 +181,40 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
       return
     }
 
-    const key = `${x}-${y}`
-    if (paintedInStrokeRef.current.has(key)) {
+    const paintCell = (cellX: number, cellY: number) => {
+      const key = `${cellX}-${cellY}`
+      if (paintedInStrokeRef.current.has(key)) {
+        return
+      }
+
+      paintedInStrokeRef.current.add(key)
+
+      // Optimistic update flow: parent updates local state immediately so the user
+      // sees paint feedback instantly while websocket confirmation arrives later.
+      onPixelClick(cellX, cellY)
+    }
+
+    const previousPoint = lastPointRef.current
+
+    if (!previousPoint) {
+      paintCell(x, y)
+      lastPointRef.current = { x, y }
       return
     }
 
-    paintedInStrokeRef.current.add(key)
+    // Fill intermediate cells between pointer events so fast strokes don't skip pixels.
+    const dx = x - previousPoint.x
+    const dy = y - previousPoint.y
+    const steps = Math.max(Math.abs(dx), Math.abs(dy))
 
-    // Optimistic update flow: parent updates local state immediately so the user
-    // sees paint feedback instantly while websocket confirmation arrives later.
-    onPixelClick(x, y)
+    for (let step = 1; step <= steps; step += 1) {
+      const t = step / steps
+      const cellX = Math.round(previousPoint.x + dx * t)
+      const cellY = Math.round(previousPoint.y + dy * t)
+      paintCell(cellX, cellY)
+    }
+
+    lastPointRef.current = { x, y }
   }
 
   return (
@@ -202,6 +228,8 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
           onPointerDown={(event) => {
             isDrawingRef.current = true
             paintedInStrokeRef.current.clear()
+            lastPointRef.current = null
+            event.currentTarget.setPointerCapture(event.pointerId)
             paintFromPointer(event)
           }}
           onPointerMove={(event) => {
@@ -209,6 +237,14 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
               return
             }
             paintFromPointer(event)
+          }}
+          onPointerUp={(event) => {
+            isDrawingRef.current = false
+            paintedInStrokeRef.current.clear()
+            lastPointRef.current = null
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
           }}
         />
         <canvas

@@ -39,9 +39,12 @@ export function useCanvasWebSocket(canvasId: string) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionState>('closed')
 
   const socketRef = useRef<WebSocket | null>(null)
-  const shouldReconnectRef = useRef(true)
-  const reconnectTimerRef = useRef<number | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
   const retryAttemptRef = useRef(0)
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
 
   const handleRawMessage = useCallback((rawText: string) => {
     let parsed: unknown
@@ -96,7 +99,8 @@ export function useCanvasWebSocket(canvasId: string) {
         })
 
         const incomingSession = readString(data.sessionId ?? data.session_id)
-        if (!sessionId && incomingSession) {
+        if (!sessionIdRef.current && incomingSession) {
+          sessionIdRef.current = incomingSession
           setSessionId(incomingSession)
         }
         break
@@ -119,7 +123,8 @@ export function useCanvasWebSocket(canvasId: string) {
         const incomingSession = readString(data.sessionId ?? data.session_id)
         const count = readNumber(data.activeSessionCount ?? data.active_session_count)
         setActiveUsers(count)
-        if (!sessionId && incomingSession) {
+        if (!sessionIdRef.current && incomingSession) {
+          sessionIdRef.current = incomingSession
           setSessionId(incomingSession)
         }
         break
@@ -132,22 +137,26 @@ export function useCanvasWebSocket(canvasId: string) {
       default:
         break
     }
-  }, [sessionId])
+  }, [])
 
   useEffect(() => {
-    shouldReconnectRef.current = true
-
     if (!canvasId) {
+      if (socketRef.current) {
+        socketRef.current.close()
+        socketRef.current = null
+      }
       return () => {
-        shouldReconnectRef.current = false
+        // no-op cleanup when no canvas is selected
       }
     }
 
     const baseUrl = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'
     const endpoint = `${baseUrl}/ws/canvas/${canvasId}`
+    let isActive = true
+    let reconnectTimer: number | null = null
 
     const connect = () => {
-      if (!shouldReconnectRef.current) {
+      if (!isActive) {
         return
       }
 
@@ -155,22 +164,37 @@ export function useCanvasWebSocket(canvasId: string) {
       socketRef.current = socket
 
       socket.addEventListener('open', () => {
+        if (!isActive || socketRef.current !== socket) {
+          return
+        }
+
         retryAttemptRef.current = 0
+        setActiveUsers(0)
+        sessionIdRef.current = null
+        setSessionId(null)
         setConnectionStatus('open')
       })
 
       socket.addEventListener('message', (event) => {
+        if (!isActive || socketRef.current !== socket) {
+          return
+        }
+
         if (typeof event.data === 'string') {
           handleRawMessage(event.data)
         }
       })
 
       socket.addEventListener('close', () => {
-        setConnectionStatus('closed')
+        if (socketRef.current === socket) {
+          socketRef.current = null
+        }
 
-        if (!shouldReconnectRef.current) {
+        if (!isActive) {
           return
         }
+
+        setConnectionStatus('closed')
 
         // Reconnection strategy: exponential backoff (1s -> 30s max) with
         // jitter to avoid synchronized reconnect spikes after outages.
@@ -182,12 +206,16 @@ export function useCanvasWebSocket(canvasId: string) {
         const delay = backoff + jitter
         retryAttemptRef.current += 1
 
-        reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimer = window.setTimeout(() => {
           connect()
         }, delay)
       })
 
       socket.addEventListener('error', () => {
+        if (!isActive || socketRef.current !== socket) {
+          return
+        }
+
         socket.close()
       })
     }
@@ -195,10 +223,10 @@ export function useCanvasWebSocket(canvasId: string) {
     connect()
 
     return () => {
-      shouldReconnectRef.current = false
+      isActive = false
 
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current)
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
       }
 
       if (socketRef.current) {
@@ -233,11 +261,11 @@ export function useCanvasWebSocket(canvasId: string) {
           y: event.y,
           color: event.color,
           client_timestamp: event.clientTimestamp,
-          session_id: sessionId ?? '',
+          session_id: sessionIdRef.current ?? '',
         }),
       )
     },
-    [sessionId],
+    [],
   )
 
   const clearPixelsOptimistic = useCallback(() => {

@@ -91,23 +91,11 @@ async fn websocket_clients_converge_and_receive_session_counts() {
         .await
         .unwrap_or_else(|error| panic!("failed to run migrations in ws test: {error}"));
 
-    sqlx::query("DELETE FROM sessions")
-        .execute(&pool)
-        .await
-        .expect("failed to clear sessions table");
-    sqlx::query("DELETE FROM pixels")
-        .execute(&pool)
-        .await
-        .expect("failed to clear pixels table");
-    sqlx::query("DELETE FROM canvases")
-        .execute(&pool)
-        .await
-        .expect("failed to clear canvases table");
-
     let canvas_id = Uuid::new_v4();
+    let canvas_name = format!("ws-test-canvas-{}", canvas_id);
     sqlx::query("INSERT INTO canvases (id, name, width, height) VALUES ($1, $2, $3, $4)")
         .bind(canvas_id)
-        .bind("WS Test Canvas")
+        .bind(canvas_name)
         .bind(16_i32)
         .bind(16_i32)
         .execute(&pool)
@@ -282,6 +270,12 @@ async fn websocket_clients_converge_and_receive_session_counts() {
     assert!(c1_left.contains(&1));
 
     ws1.close(None).await.expect("client 1 failed to close");
+
+    sqlx::query("DELETE FROM canvases WHERE id = $1")
+        .bind(canvas_id)
+        .execute(&pool)
+        .await
+        .expect("failed to cleanup ws test canvas");
 
     server_handle.abort();
 }

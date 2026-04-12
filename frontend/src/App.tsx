@@ -22,7 +22,7 @@ const slugify = (value: string) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
 
-const canvasPath = (canvas: CanvasModel) => `/canvas/${slugify(canvas.name)}`
+const canvasPath = (canvas: CanvasModel) => `/canvas/${canvas.id}/${slugify(canvas.name)}`
 
 const toConnectionCode = (canvas: CanvasModel) =>
   canvas.id.replace(/-/g, '').slice(0, 8).toUpperCase()
@@ -143,15 +143,15 @@ function App() {
       return
     }
 
-    const canvasPathMatch = pathname.match(/^\/canvas\/([^/]+)$/)
+    const canvasPathMatch = pathname.match(/^\/canvas\/([^/]+)\/(?:[^/]+)$/)
     if (!canvasPathMatch) {
       setView('lobby')
       setSelectedCanvas(null)
       return
     }
 
-    const requestedSlug = decodeURIComponent(canvasPathMatch[1])
-    const matched = canvases.find((entry) => slugify(entry.canvas.name) === requestedSlug)
+    const requestedCanvasId = decodeURIComponent(canvasPathMatch[1])
+    const matched = canvases.find((entry) => entry.canvas.id === requestedCanvasId)
 
     if (matched) {
       setSelectedCanvas(matched.canvas)
