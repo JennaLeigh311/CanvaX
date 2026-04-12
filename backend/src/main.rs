@@ -1,18 +1,14 @@
 // Entry point for the CanvaX backend: loads config, initializes shared state,
 // builds the router, and starts the Axum HTTP/WebSocket server.
-mod config;
-mod db;
-mod error;
-mod handlers;
-mod models;
-mod state;
-mod ws;
-
 use axum::{Router, routing::get};
-use config::Config;
-use db::create_pool;
-use error::AppError;
-use state::{AppState, SharedState};
+use canvax_backend::{
+    config::Config,
+    db::create_pool,
+    error::AppError,
+    handlers,
+    state::{AppState, SharedState},
+    ws,
+};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt};

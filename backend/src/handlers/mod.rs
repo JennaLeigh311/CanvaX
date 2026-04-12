@@ -39,13 +39,13 @@ pub async fn create_canvas(
 ) -> Result<(StatusCode, Json<Canvas>), AppError> {
     let trimmed_name = payload.name.trim();
     if trimmed_name.is_empty() {
-        return Err(AppError::Validation(
+        return Err(AppError::ValidationError(
             "name cannot be empty or whitespace".to_string(),
         ));
     }
 
     if !(8..=128).contains(&payload.width) || !(8..=128).contains(&payload.height) {
-        return Err(AppError::Validation(
+        return Err(AppError::ValidationError(
             "width and height must be between 8 and 128".to_string(),
         ));
     }

@@ -16,3 +16,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 dotenv = "0.15"
 tower-http = { version = "0.6", features = ["cors"] }
 futures-util = "0.3"
+
+[dev-dependencies]
+tower = "0.5"

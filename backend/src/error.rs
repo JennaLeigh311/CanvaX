@@ -5,29 +5,28 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
-use std::{fmt, net::AddrParseError};
+use std::fmt;
 
+/// Application-level error type used by HTTP handlers.
 #[derive(Debug)]
 pub enum AppError {
-    Config(String),
-    Validation(String),
+    /// Returned when a requested resource does not exist.
     NotFound(String),
-    Database(sqlx::Error),
-    Io(std::io::Error),
-    Address(AddrParseError),
-    Internal(String),
+    /// Returned when input validation fails for request payloads/params.
+    ValidationError(String),
+    /// Wraps database errors from SQLx operations.
+    DatabaseError(sqlx::Error),
+    /// Returned for unexpected non-database runtime errors.
+    InternalError(String),
 }
 
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Config(message) => write!(f, "configuration error: {message}"),
-            Self::Validation(message) => write!(f, "validation error: {message}"),
             Self::NotFound(message) => write!(f, "not found: {message}"),
-            Self::Database(err) => write!(f, "database error: {err}"),
-            Self::Io(err) => write!(f, "io error: {err}"),
-            Self::Address(err) => write!(f, "address parse error: {err}"),
-            Self::Internal(message) => write!(f, "internal error: {message}"),
+            Self::ValidationError(message) => write!(f, "validation error: {message}"),
+            Self::DatabaseError(err) => write!(f, "database error: {err}"),
+            Self::InternalError(message) => write!(f, "internal error: {message}"),
         }
     }
 }
@@ -37,36 +36,30 @@ impl std::error::Error for AppError {}
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Self::Config(message) | Self::Validation(message) => (StatusCode::BAD_REQUEST, message),
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
-            Self::Database(_) => (
+            Self::ValidationError(message) => (StatusCode::BAD_REQUEST, message),
+            Self::DatabaseError(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Database operation failed".to_string(),
             ),
-            Self::Io(_) | Self::Address(_) | Self::Internal(_) => (
+            Self::InternalError(message) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
+                message,
             ),
         };
 
-        (status, Json(json!({ "error": message }))).into_response()
+        (status, Json(json!({ "message": message }))).into_response()
     }
 }
 
 impl From<sqlx::Error> for AppError {
     fn from(value: sqlx::Error) -> Self {
-        Self::Database(value)
+        Self::DatabaseError(value)
     }
 }
 
 impl From<std::io::Error> for AppError {
     fn from(value: std::io::Error) -> Self {
-        Self::Io(value)
-    }
-}
-
-impl From<AddrParseError> for AppError {
-    fn from(value: AddrParseError) -> Self {
-        Self::Address(value)
+        Self::InternalError(format!("I/O error: {value}"))
     }
 }
