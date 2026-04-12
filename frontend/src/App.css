@@ -133,6 +133,12 @@
   font-size: 1.1rem;
 }
 
+.lobby-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .lobby-create-form {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr auto;
@@ -170,6 +176,50 @@
   cursor: not-allowed;
 }
 
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 30;
+}
+
+.dialog-panel {
+  width: min(760px, 94vw);
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dialog-header h3 {
+  margin: 0;
+}
+
+.dialog-close {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.lobby-join-form {
+  display: grid;
+  gap: 10px;
+}
+
 .lobby-list-header {
   display: flex;
   justify-content: space-between;
@@ -180,8 +230,9 @@
 
 .lobby-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 240px));
   gap: 12px;
+  align-items: start;
 }
 
 .lobby-card {
@@ -190,19 +241,39 @@
   background: #ffffff;
   padding: 10px;
   display: grid;
+  grid-template-rows: 170px auto 40px;
   gap: 10px;
+  align-content: start;
+  width: 240px;
+  height: 300px;
 }
 
 .lobby-preview-wrapper {
   overflow: auto;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  height: 170px;
+  background: #ffffff;
 }
 
 .lobby-preview-wrapper .canvas-panel {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
   padding: 6px;
   border: none;
   border-radius: 8px;
+  display: block;
+  overflow: visible;
+}
+
+.lobby-preview-wrapper .pixel-canvas-stack {
+  position: relative;
+}
+
+.lobby-preview-wrapper .pixel-canvas {
+  cursor: default;
+  pointer-events: none;
 }
 
 .lobby-card-meta h3 {
@@ -214,6 +285,11 @@
   margin: 4px 0 0;
   color: #475569;
   font-size: 0.9rem;
+}
+
+.lobby-card .lobby-primary-button {
+  width: 100%;
+  align-self: end;
 }
 
 .lobby-note {
@@ -270,5 +346,10 @@
   .lobby-create-form {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .lobby-action-row {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 }

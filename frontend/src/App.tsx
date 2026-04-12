@@ -12,6 +12,8 @@ type LobbyCanvas = {
   previewPixels: Map<string, Pixel>
 }
 
+type LobbyDialogMode = 'host-canvas' | 'host-classroom' | 'join-classroom' | 'join-canvas' | null
+
 const slugify = (value: string) =>
   value
     .trim()
@@ -21,6 +23,9 @@ const slugify = (value: string) =>
     .replace(/-+/g, '-')
 
 const canvasPath = (canvas: CanvasModel) => `/canvas/${slugify(canvas.name)}`
+
+const toConnectionCode = (canvas: CanvasModel) =>
+  canvas.id.replace(/-/g, '').slice(0, 8).toUpperCase()
 
 const readPathname = () => {
   if (typeof window === 'undefined') {
@@ -54,6 +59,12 @@ function App() {
   const [canvasName, setCanvasName] = useState('')
   const [canvasWidth, setCanvasWidth] = useState(24)
   const [canvasHeight, setCanvasHeight] = useState(16)
+  const [dialogMode, setDialogMode] = useState<LobbyDialogMode>(null)
+  const [classroomName, setClassroomName] = useState('')
+  const [classroomWidth, setClassroomWidth] = useState(24)
+  const [classroomHeight, setClassroomHeight] = useState(16)
+  const [joinQuery, setJoinQuery] = useState('')
+  const [connectionCodeNotice, setConnectionCodeNotice] = useState<string | null>(null)
   const [pathname, setPathname] = useState(readPathname)
 
   const canvasId = selectedCanvas?.id ?? ''
@@ -177,6 +188,66 @@ function App() {
     }
   }
 
+  const handleHostClassroom = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const name = classroomName.trim()
+    if (!name) {
+      setLobbyError('Please enter a classroom title.')
+      return
+    }
+
+    setIsCreating(true)
+    setLobbyError(null)
+
+    try {
+      const created = await createCanvas(`Classroom: ${name}`, classroomWidth, classroomHeight)
+      const code = toConnectionCode(created)
+      setConnectionCodeNotice(`Classroom code: ${code}`)
+      setClassroomName('')
+      await loadLobby()
+      setDialogMode(null)
+      navigateTo(canvasPath(created))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to host classroom'
+      setLobbyError(message)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const handleJoinByQuery = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const query = joinQuery.trim().toLowerCase()
+    if (!query) {
+      setLobbyError('Enter a classroom code, canvas title, or slug.')
+      return
+    }
+
+    const normalizedCode = query.replace(/[^a-z0-9]/g, '').toUpperCase()
+    const match = canvases.find(({ canvas }) => {
+      const canvasCode = toConnectionCode(canvas)
+      const title = canvas.name.toLowerCase()
+      const slug = slugify(canvas.name)
+      return (
+        canvasCode === normalizedCode ||
+        canvas.id.toLowerCase() === query ||
+        title === query ||
+        slug === query
+      )
+    })
+
+    if (!match) {
+      setLobbyError('No matching classroom/canvas found for that code.')
+      return
+    }
+
+    setLobbyError(null)
+    setDialogMode(null)
+    setJoinQuery('')
+    navigateTo(canvasPath(match.canvas))
+  }
+
   const connectionLabel = toToolbarStatus(connectionStatus)
 
   const handlePaintPixel = (x: number, y: number) => {
@@ -201,47 +272,33 @@ function App() {
         </header>
 
         <section className="lobby-create-panel" aria-label="Create canvas">
-          <h2>Host a New Canvas</h2>
-          <form className="lobby-create-form" onSubmit={handleCreateCanvas}>
-            <label className="lobby-field">
-              <span>Title</span>
-              <input
-                value={canvasName}
-                onChange={(event) => setCanvasName(event.target.value)}
-                placeholder="Saturday Pixel Jam"
-                maxLength={80}
-                required
-              />
-            </label>
-
-            <label className="lobby-field">
-              <span>Width</span>
-              <input
-                type="number"
-                min={8}
-                max={128}
-                value={canvasWidth}
-                onChange={(event) => setCanvasWidth(Number(event.target.value))}
-                required
-              />
-            </label>
-
-            <label className="lobby-field">
-              <span>Height</span>
-              <input
-                type="number"
-                min={8}
-                max={128}
-                value={canvasHeight}
-                onChange={(event) => setCanvasHeight(Number(event.target.value))}
-                required
-              />
-            </label>
-
-            <button type="submit" className="lobby-primary-button" disabled={isCreating}>
-              {isCreating ? 'Creating...' : 'Host Canvas'}
+          <h2>Session Actions</h2>
+          <div className="lobby-action-row">
+            <button className="lobby-primary-button" onClick={() => setDialogMode('host-canvas')}>
+              Host New Canvas
             </button>
-          </form>
+            <button
+              className="lobby-primary-button"
+              onClick={() => setDialogMode('host-classroom')}
+            >
+              Host Classroom
+            </button>
+            <button
+              className="lobby-primary-button"
+              onClick={() => setDialogMode('join-classroom')}
+            >
+              Join Classroom
+            </button>
+            <button className="lobby-primary-button" onClick={() => setDialogMode('join-canvas')}>
+              Join Canvas
+            </button>
+          </div>
+
+          {connectionCodeNotice ? (
+            <p className="lobby-note">{connectionCodeNotice}</p>
+          ) : (
+            <p className="lobby-note">Use classroom codes to invite your students quickly.</p>
+          )}
         </section>
 
         <section className="lobby-list-panel" aria-label="Available canvases">
@@ -280,6 +337,7 @@ function App() {
                   <p>
                     {canvas.width}x{canvas.height}
                   </p>
+                  <p>Code: {toConnectionCode(canvas)}</p>
                 </div>
 
                 <button
@@ -294,6 +352,138 @@ function App() {
             ))}
           </div>
         </section>
+
+        {dialogMode ? (
+          <div className="dialog-backdrop" role="presentation" onClick={() => setDialogMode(null)}>
+            <section
+              className="dialog-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Canvas actions dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="dialog-header">
+                <h3>
+                  {dialogMode === 'host-canvas' && 'Host New Canvas'}
+                  {dialogMode === 'host-classroom' && 'Host Classroom'}
+                  {dialogMode === 'join-classroom' && 'Join Classroom'}
+                  {dialogMode === 'join-canvas' && 'Join Canvas'}
+                </h3>
+                <button className="dialog-close" onClick={() => setDialogMode(null)}>
+                  Close
+                </button>
+              </header>
+
+              {dialogMode === 'host-canvas' ? (
+                <form className="lobby-create-form" onSubmit={handleCreateCanvas}>
+                  <label className="lobby-field">
+                    <span>Title</span>
+                    <input
+                      value={canvasName}
+                      onChange={(event) => setCanvasName(event.target.value)}
+                      placeholder="Saturday Pixel Jam"
+                      maxLength={80}
+                      required
+                    />
+                  </label>
+
+                  <label className="lobby-field">
+                    <span>Width</span>
+                    <input
+                      type="number"
+                      min={8}
+                      max={128}
+                      value={canvasWidth}
+                      onChange={(event) => setCanvasWidth(Number(event.target.value))}
+                      required
+                    />
+                  </label>
+
+                  <label className="lobby-field">
+                    <span>Height</span>
+                    <input
+                      type="number"
+                      min={8}
+                      max={128}
+                      value={canvasHeight}
+                      onChange={(event) => setCanvasHeight(Number(event.target.value))}
+                      required
+                    />
+                  </label>
+
+                  <button type="submit" className="lobby-primary-button" disabled={isCreating}>
+                    {isCreating ? 'Creating...' : 'Host Canvas'}
+                  </button>
+                </form>
+              ) : null}
+
+              {dialogMode === 'host-classroom' ? (
+                <form className="lobby-create-form" onSubmit={handleHostClassroom}>
+                  <label className="lobby-field">
+                    <span>Classroom Name</span>
+                    <input
+                      value={classroomName}
+                      onChange={(event) => setClassroomName(event.target.value)}
+                      placeholder="Period 2 Intro to Art"
+                      maxLength={80}
+                      required
+                    />
+                  </label>
+
+                  <label className="lobby-field">
+                    <span>Width</span>
+                    <input
+                      type="number"
+                      min={8}
+                      max={128}
+                      value={classroomWidth}
+                      onChange={(event) => setClassroomWidth(Number(event.target.value))}
+                      required
+                    />
+                  </label>
+
+                  <label className="lobby-field">
+                    <span>Height</span>
+                    <input
+                      type="number"
+                      min={8}
+                      max={128}
+                      value={classroomHeight}
+                      onChange={(event) => setClassroomHeight(Number(event.target.value))}
+                      required
+                    />
+                  </label>
+
+                  <button type="submit" className="lobby-primary-button" disabled={isCreating}>
+                    {isCreating ? 'Creating...' : 'Host Classroom'}
+                  </button>
+                </form>
+              ) : null}
+
+              {dialogMode === 'join-classroom' || dialogMode === 'join-canvas' ? (
+                <form className="lobby-join-form" onSubmit={handleJoinByQuery}>
+                  <label className="lobby-field">
+                    <span>
+                      {dialogMode === 'join-classroom'
+                        ? 'Enter Classroom Code'
+                        : 'Enter Canvas Code, Title, Slug, or Id'}
+                    </span>
+                    <input
+                      value={joinQuery}
+                      onChange={(event) => setJoinQuery(event.target.value)}
+                      placeholder={dialogMode === 'join-classroom' ? 'Example: A1B2C3D4' : 'Example: ws-test-canvas'}
+                      required
+                    />
+                  </label>
+
+                  <button type="submit" className="lobby-primary-button">
+                    {dialogMode === 'join-classroom' ? 'Join Classroom' : 'Join Canvas'}
+                  </button>
+                </form>
+              ) : null}
+            </section>
+          </div>
+        ) : null}
       </main>
     )
   }
