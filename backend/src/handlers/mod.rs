@@ -13,7 +13,9 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::{Canvas, CanvasStateSnapshot, CreateCanvasRequest, Pixel},
+    models::{
+        Canvas, CanvasStateSnapshot, Classroom, CreateCanvasRequest, CreateClassroomRequest, Pixel,
+    },
     state::SharedState,
 };
 
@@ -35,6 +37,12 @@ pub fn routes() -> Router<SharedState> {
     Router::new()
         .route("/canvases", post(create_canvas).get(list_canvases))
         .route("/canvases/{id}", get(get_canvas).delete(delete_canvas))
+        .route("/classrooms", post(create_classroom).get(list_classrooms))
+        .route("/classrooms/{id}", get(get_classroom))
+        .route(
+            "/classrooms/{id}/canvases",
+            post(create_canvas_in_classroom).get(list_classroom_canvases),
+        )
 }
 
 /// Lightweight service health endpoint used by setup checks.
@@ -123,6 +131,21 @@ pub async fn create_canvas(
     State(state): State<SharedState>,
     Json(payload): Json<CreateCanvasRequest>,
 ) -> Result<(StatusCode, Json<Canvas>), AppError> {
+    if payload.classroom_id.is_some() {
+        return Err(AppError::ValidationError(
+            "use /api/classrooms/{id}/canvases for classroom canvases".to_string(),
+        ));
+    }
+
+    let canvas = create_canvas_record(&state, payload, None).await?;
+    Ok((StatusCode::CREATED, Json(canvas)))
+}
+
+async fn create_canvas_record(
+    state: &SharedState,
+    payload: CreateCanvasRequest,
+    classroom_scope: Option<Uuid>,
+) -> Result<Canvas, AppError> {
     let trimmed_name = payload.name.trim();
     if trimmed_name.is_empty() {
         return Err(AppError::ValidationError(
@@ -136,21 +159,35 @@ pub async fn create_canvas(
         ));
     }
 
+    if let Some(classroom_id) = classroom_scope {
+        let exists = sqlx::query_scalar::<_, i32>("SELECT 1 FROM classrooms WHERE id = $1")
+            .bind(classroom_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(AppError::from)?
+            .is_some();
+
+        if !exists {
+            return Err(AppError::NotFound(format!("classroom {classroom_id} was not found")));
+        }
+    }
+
     let canvas_id = Uuid::new_v4();
     let canvas = sqlx::query_as::<_, Canvas>(
-        "INSERT INTO canvases (id, name, width, height) VALUES ($1, $2, $3, $4) RETURNING id, name, width, height, created_at",
+        "INSERT INTO canvases (id, name, width, height, classroom_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, width, height, classroom_id, created_at",
     )
     .bind(canvas_id)
     .bind(trimmed_name)
     .bind(payload.width)
     .bind(payload.height)
+    .bind(classroom_scope)
     .fetch_one(&state.db)
     .await
     .map_err(AppError::from)?;
 
     info!(canvas_id = %canvas.id, name = %canvas.name, "canvas created");
 
-    Ok((StatusCode::CREATED, Json(canvas)))
+    Ok(canvas)
 }
 
 /// Fetches a canvas and all persisted pixels for initial client state hydration.
@@ -173,7 +210,7 @@ pub async fn get_canvas(
     Path(id): Path<Uuid>,
 ) -> Result<Json<CanvasStateSnapshot>, AppError> {
     let canvas = sqlx::query_as::<_, Canvas>(
-        "SELECT id, name, width, height, created_at FROM canvases WHERE id = $1",
+        "SELECT id, name, width, height, classroom_id, created_at FROM canvases WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -211,7 +248,7 @@ pub async fn list_canvases(
     State(state): State<SharedState>,
 ) -> Result<Json<Vec<CanvasListItem>>, AppError> {
     let canvases = sqlx::query_as::<_, CanvasListItem>(
-        "SELECT id, name, width, height FROM canvases ORDER BY created_at DESC",
+        "SELECT id, name, width, height FROM canvases WHERE classroom_id IS NULL ORDER BY created_at DESC",
     )
     .fetch_all(&state.db)
     .await
@@ -219,6 +256,107 @@ pub async fn list_canvases(
 
     info!(count = canvases.len(), "canvas list fetched");
     Ok(Json(canvases))
+}
+
+/// Creates a new classroom board.
+pub async fn create_classroom(
+    State(state): State<SharedState>,
+    Json(payload): Json<CreateClassroomRequest>,
+) -> Result<(StatusCode, Json<Classroom>), AppError> {
+    let trimmed_name = payload.name.trim();
+    if trimmed_name.is_empty() {
+        return Err(AppError::ValidationError(
+            "name cannot be empty or whitespace".to_string(),
+        ));
+    }
+
+    let classroom_id = Uuid::new_v4();
+    let classroom = sqlx::query_as::<_, Classroom>(
+        "INSERT INTO classrooms (id, name) VALUES ($1, $2) RETURNING id, name, created_at",
+    )
+    .bind(classroom_id)
+    .bind(trimmed_name)
+    .fetch_one(&state.db)
+    .await
+    .map_err(AppError::from)?;
+
+    info!(classroom_id = %classroom.id, name = %classroom.name, "classroom created");
+    Ok((StatusCode::CREATED, Json(classroom)))
+}
+
+/// Returns classrooms ordered by newest first.
+pub async fn list_classrooms(
+    State(state): State<SharedState>,
+) -> Result<Json<Vec<Classroom>>, AppError> {
+    let classrooms = sqlx::query_as::<_, Classroom>(
+        "SELECT id, name, created_at FROM classrooms ORDER BY created_at DESC",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(AppError::from)?;
+
+    Ok(Json(classrooms))
+}
+
+/// Fetches one classroom by id.
+pub async fn get_classroom(
+    State(state): State<SharedState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Classroom>, AppError> {
+    let classroom = sqlx::query_as::<_, Classroom>(
+        "SELECT id, name, created_at FROM classrooms WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(AppError::from)?
+    .ok_or_else(|| AppError::NotFound(format!("classroom {id} was not found")))?;
+
+    Ok(Json(classroom))
+}
+
+/// Lists canvases that belong to a classroom only.
+pub async fn list_classroom_canvases(
+    State(state): State<SharedState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<CanvasListItem>>, AppError> {
+    let classroom_exists = sqlx::query_scalar::<_, i32>("SELECT 1 FROM classrooms WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(AppError::from)?
+        .is_some();
+
+    if !classroom_exists {
+        return Err(AppError::NotFound(format!("classroom {id} was not found")));
+    }
+
+    let canvases = sqlx::query_as::<_, CanvasListItem>(
+        "SELECT id, name, width, height FROM canvases WHERE classroom_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(AppError::from)?;
+
+    Ok(Json(canvases))
+}
+
+/// Creates a classroom-scoped canvas.
+pub async fn create_canvas_in_classroom(
+    State(state): State<SharedState>,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<CreateCanvasRequest>,
+) -> Result<(StatusCode, Json<Canvas>), AppError> {
+    let scoped_payload = CreateCanvasRequest {
+        name: payload.name,
+        width: payload.width,
+        height: payload.height,
+        classroom_id: Some(id),
+    };
+
+    let canvas = create_canvas_record(&state, scoped_payload, Some(id)).await?;
+    Ok((StatusCode::CREATED, Json(canvas)))
 }
 
 /// Deletes a canvas by id and relies on cascade rules to remove associated pixels.

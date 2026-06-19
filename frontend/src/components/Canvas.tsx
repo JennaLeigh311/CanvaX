@@ -31,6 +31,7 @@ const parsePixelKey = (key: string) => {
 function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const gridCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const cellCursorRef = useRef<HTMLDivElement | null>(null)
   const isDrawingRef = useRef(false)
   const paintedInStrokeRef = useRef(new Set<string>())
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
@@ -165,6 +166,37 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
     }
   }, [])
 
+  // Move the hover highlight by mutating the DOM directly (transform/size only),
+  // so tracking the pointer never schedules a React render — it stays at 60fps.
+  const moveHoverCursor = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    const cursor = cellCursorRef.current
+    if (!canvas || !cursor) {
+      return
+    }
+
+    const rect = canvas.getBoundingClientRect()
+    const x = Math.floor((event.clientX - rect.left) / cellSize)
+    const y = Math.floor((event.clientY - rect.top) / cellSize)
+
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      cursor.dataset.visible = 'false'
+      return
+    }
+
+    cursor.style.width = `${cellSize}px`
+    cursor.style.height = `${cellSize}px`
+    cursor.style.transform = `translate(${x * cellSize}px, ${y * cellSize}px)`
+    cursor.dataset.visible = 'true'
+  }
+
+  const hideHoverCursor = () => {
+    const cursor = cellCursorRef.current
+    if (cursor) {
+      cursor.dataset.visible = 'false'
+    }
+  }
+
   const paintFromPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) {
@@ -233,11 +265,13 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
             paintFromPointer(event)
           }}
           onPointerMove={(event) => {
+            moveHoverCursor(event)
             if (!isDrawingRef.current) {
               return
             }
             paintFromPointer(event)
           }}
+          onPointerLeave={hideHoverCursor}
           onPointerUp={(event) => {
             isDrawingRef.current = false
             paintedInStrokeRef.current.clear()
@@ -254,6 +288,7 @@ function Canvas({ width, height, pixels, onPixelClick, cellSize = 8 }: CanvasPro
           className="pixel-grid-overlay pixel-canvas-layer"
           aria-hidden="true"
         />
+        <div ref={cellCursorRef} className="cell-cursor" aria-hidden="true" />
       </div>
     </section>
   )

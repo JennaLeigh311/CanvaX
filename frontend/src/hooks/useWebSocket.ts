@@ -40,9 +40,45 @@ export function useCanvasWebSocket(canvasId: string) {
   const sessionIdRef = useRef<string | null>(null)
   const [reconnectToken, setReconnectToken] = useState(0)
 
+  // Incoming pixel updates are buffered and flushed once per animation frame so
+  // a burst of broadcasts from many concurrent editors collapses into a single
+  // React state update instead of one re-render per message.
+  const pendingPixelsRef = useRef<Map<string, Pixel>>(new Map())
+  const rafRef = useRef<number | null>(null)
+  // Exponential-backoff reconnect bookkeeping.
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimerRef = useRef<number | null>(null)
+
   useEffect(() => {
     sessionIdRef.current = sessionId
   }, [sessionId])
+
+  const flushPixelBuffer = useCallback(() => {
+    rafRef.current = null
+    if (pendingPixelsRef.current.size === 0) {
+      return
+    }
+
+    const buffered = pendingPixelsRef.current
+    pendingPixelsRef.current = new Map()
+    setPixels((previous) => {
+      const next = new Map(previous)
+      for (const [key, pixel] of buffered) {
+        next.set(key, pixel)
+      }
+      return next
+    })
+  }, [])
+
+  const enqueuePixel = useCallback(
+    (x: number, y: number, color: string) => {
+      pendingPixelsRef.current.set(toPixelKey(x, y), { x, y, color })
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(flushPixelBuffer)
+      }
+    },
+    [flushPixelBuffer],
+  )
 
   const handleRawMessage = useCallback((rawText: string) => {
     let parsed: unknown
@@ -73,6 +109,14 @@ export function useCanvasWebSocket(canvasId: string) {
         const color = normalizeSnapshotColor(pixel, readString(pixel.color, '#000000'))
         nextMap.set(toPixelKey(x, y), { x, y, color })
       }
+
+      // A fresh snapshot replaces all state, so discard any buffered deltas
+      // (and a pending frame) to avoid re-applying stale updates over it.
+      pendingPixelsRef.current = new Map()
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
       setPixels(nextMap)
       return
     }
@@ -90,11 +134,7 @@ export function useCanvasWebSocket(canvasId: string) {
         const x = readNumber(data.x)
         const y = readNumber(data.y)
         const color = readString(data.color, '#000000')
-        setPixels((previous) => {
-          const next = new Map(previous)
-          next.set(toPixelKey(x, y), { x, y, color })
-          return next
-        })
+        enqueuePixel(x, y, color)
 
         const incomingSession = readString(data.sessionId ?? data.session_id)
         if (!sessionIdRef.current && incomingSession) {
@@ -108,13 +148,9 @@ export function useCanvasWebSocket(canvasId: string) {
         const y = readNumber(data.y)
         const winningColor = readString(data.winningColor ?? data.winning_color, '#000000')
 
-        // Rejected updates must overwrite local state immediately because the server
-        // remains the source of truth for conflict resolution.
-        setPixels((previous) => {
-          const next = new Map(previous)
-          next.set(toPixelKey(x, y), { x, y, color: winningColor })
-          return next
-        })
+        // Rejected updates overwrite local state because the server remains the
+        // source of truth for conflict resolution; batched with other deltas.
+        enqueuePixel(x, y, winningColor)
         break
       }
       case 'SessionJoined': {
@@ -135,7 +171,7 @@ export function useCanvasWebSocket(canvasId: string) {
       default:
         break
     }
-  }, [])
+  }, [enqueuePixel])
 
   useEffect(() => {
     if (!canvasId) {
@@ -143,7 +179,8 @@ export function useCanvasWebSocket(canvasId: string) {
         socketRef.current.close()
         socketRef.current = null
       }
-      setConnectionStatus('closed')
+      // No setState needed: effectiveConnectionStatus reports 'closed' whenever
+      // canvasId is falsy, so updating connectionStatus here is redundant churn.
       return () => {
         // no-op cleanup when no canvas is selected
       }
@@ -152,6 +189,29 @@ export function useCanvasWebSocket(canvasId: string) {
     const baseUrl = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'
     const endpoint = `${baseUrl}/ws/canvas/${canvasId}`
     let isActive = true
+    reconnectAttemptsRef.current = 0
+
+    const scheduleReconnect = () => {
+      if (!isActive) {
+        return
+      }
+
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current)
+      }
+
+      // Exponential backoff capped at 30s, with jitter to avoid a thundering
+      // herd of clients all reconnecting in lockstep after a server blip.
+      const attempt = reconnectAttemptsRef.current
+      reconnectAttemptsRef.current = attempt + 1
+      const ceiling = Math.min(30000, 1000 * 2 ** attempt)
+      const delay = ceiling / 2 + Math.random() * (ceiling / 2)
+
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        connect()
+      }, delay)
+    }
 
     const connect = () => {
       if (!isActive) {
@@ -167,6 +227,8 @@ export function useCanvasWebSocket(canvasId: string) {
           return
         }
 
+        // Successful connect resets backoff so the next drop retries quickly.
+        reconnectAttemptsRef.current = 0
         setActiveUsers(0)
         sessionIdRef.current = null
         setSessionId(null)
@@ -193,6 +255,7 @@ export function useCanvasWebSocket(canvasId: string) {
         }
 
         setConnectionStatus('closed')
+        scheduleReconnect()
       })
 
       socket.addEventListener('error', () => {
@@ -208,6 +271,17 @@ export function useCanvasWebSocket(canvasId: string) {
 
     return () => {
       isActive = false
+
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      pendingPixelsRef.current = new Map()
 
       if (socketRef.current) {
         socketRef.current.close()

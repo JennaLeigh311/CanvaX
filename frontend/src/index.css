@@ -1,12 +1,27 @@
-/* Global styles for the CanvaX frontend shell and typography. */
+/* Global styles, design tokens, and the animated backdrop for the CanvaX shell. */
 :root {
-  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
-  line-height: 1.45;
+  --font-sans: 'Inter', 'Avenir Next', 'Segoe UI', sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace;
+
+  --bg-base: #07091a;
+  --ink: #e9ebfb;
+  --ink-muted: #a3a9d4;
+  --ink-dim: #7c83b4;
+  --line: rgba(150, 162, 255, 0.16);
+  --glass: rgba(255, 255, 255, 0.045);
+
+  --grad-violet: linear-gradient(135deg, #7c3aed, #a855f7);
+  --grad-aurora: linear-gradient(120deg, #818cf8 0%, #e879f9 48%, #22d3ee 100%);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  font-family: var(--font-sans);
+  line-height: 1.5;
   font-weight: 400;
-  color: #111827;
-  background: radial-gradient(circle at 15% 20%, #fde68a 0%, #f8fafc 35%),
-    radial-gradient(circle at 85% 25%, #bfdbfe 0%, transparent 25%),
-    #f3f4f6;
+  color: var(--ink);
+  background: var(--bg-base);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -20,8 +35,116 @@
 body {
   margin: 0;
   min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Drifting gradient-mesh backdrop. Animated purely on transform/opacity so it
+   stays on the compositor and never triggers layout/paint on the main thread. */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  z-index: -2;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+  pointer-events: none;
+  will-change: transform;
+}
+
+body::before {
+  width: 60vmax;
+  height: 60vmax;
+  top: -18vmax;
+  left: -14vmax;
+  background: radial-gradient(circle at 30% 30%, #7c3aed, transparent 62%),
+    radial-gradient(circle at 70% 60%, #ec4899, transparent 60%);
+  animation: drift-a 26s var(--ease-out) infinite alternate;
+}
+
+body::after {
+  width: 55vmax;
+  height: 55vmax;
+  right: -16vmax;
+  bottom: -20vmax;
+  left: auto;
+  top: auto;
+  background: radial-gradient(circle at 40% 40%, #22d3ee, transparent 60%),
+    radial-gradient(circle at 60% 70%, #6366f1, transparent 62%);
+  animation: drift-b 32s var(--ease-out) infinite alternate;
+}
+
+/* Faint grid texture for depth. */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(124, 138, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 138, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 30%, #000 0%, transparent 78%);
+}
+
+@keyframes drift-a {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(8vw, 6vh, 0) scale(1.18);
+  }
+}
+
+@keyframes drift-b {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.1);
+  }
+  to {
+    transform: translate3d(-7vw, -5vh, 0) scale(1);
+  }
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Custom scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 162, 255, 0.32) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(150, 162, 255, 0.28);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 190, 255, 0.45);
+  background-clip: padding-box;
+}
+
+::selection {
+  background: rgba(168, 85, 247, 0.4);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

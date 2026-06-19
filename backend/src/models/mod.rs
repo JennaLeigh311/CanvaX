@@ -15,7 +15,20 @@ pub struct Canvas {
     pub width: i32,
     /// Number of vertical cells in the canvas grid.
     pub height: i32,
+    /// Optional classroom ownership for this canvas.
+    pub classroom_id: Option<Uuid>,
     /// Timestamp when the canvas was created.
+    pub created_at: DateTime<Utc>,
+}
+
+/// Represents a classroom workspace that can contain multiple canvases.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Classroom {
+    /// Primary key for the classroom record.
+    pub id: Uuid,
+    /// Display name shown in classroom listings and headers.
+    pub name: String,
+    /// Timestamp when the classroom was created.
     pub created_at: DateTime<Utc>,
 }
 
@@ -62,6 +75,16 @@ pub struct CreateCanvasRequest {
     pub width: i32,
     /// Requested number of vertical cells.
     pub height: i32,
+    /// Optional classroom id when creating classroom-scoped canvases.
+    #[serde(default)]
+    pub classroom_id: Option<Uuid>,
+}
+
+/// Request payload for creating a new classroom board.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateClassroomRequest {
+    /// Human-readable classroom name.
+    pub name: String,
 }
 
 /// WebSocket event payload for updating a single pixel.

@@ -109,6 +109,11 @@ async fn websocket_clients_converge_and_receive_session_counts() {
         canvas_width: 64,
         canvas_height: 64,
         max_sessions: 500,
+        database_max_connections: 10,
+        broadcast_capacity: 1024,
+        pixel_write_buffer: 1024,
+        pixel_flush_interval_ms: 50,
+        pixel_flush_max_batch: 128,
     };
     let state: SharedState = AppState::new(pool.clone(), config);
 

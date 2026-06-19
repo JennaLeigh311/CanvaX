@@ -1,6 +1,7 @@
 //! Database bootstrap helpers for PostgreSQL pool creation and startup checks.
 use crate::config::Config;
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::time::Duration;
 
 /// Creates and validates the shared PostgreSQL connection pool.
 ///
@@ -18,7 +19,10 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 /// fail, or the post-connect health probe query fails.
 pub async fn create_pool(config: &Config) -> PgPool {
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(config.database_max_connections)
+        // Bound how long a request waits for a free connection so a saturated
+        // pool fails fast instead of stalling websocket setup indefinitely.
+        .acquire_timeout(Duration::from_secs(5))
         .connect(&config.database_url)
         .await
         .unwrap_or_else(|error| {

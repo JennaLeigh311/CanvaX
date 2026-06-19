@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::{Canvas, CanvasStateSnapshot, Pixel, PixelUpdateEvent},
+    models::{Canvas, CanvasStateSnapshot, PixelUpdateEvent},
     state::{CanvasEvent, SharedState},
 };
 
@@ -73,7 +73,7 @@ pub async fn ws_handler(
         .map_err(AppError::from)?;
 
     let canvas = sqlx::query_as::<_, Canvas>(
-        "SELECT id, name, width, height, created_at FROM canvases WHERE id = $1",
+        "SELECT id, name, width, height, classroom_id, created_at FROM canvases WHERE id = $1",
     )
     .bind(canvas_id)
     .fetch_optional(&state.db)
@@ -82,8 +82,11 @@ pub async fn ws_handler(
     .ok_or_else(|| AppError::NotFound(format!("canvas {canvas_id} was not found")))?;
 
     let active_session_count = state.add_session(canvas_id, session_id).await?;
-    let snapshot_pixels = state.snapshot_pixels(canvas_id).await?;
+    // Subscribe BEFORE snapshotting so any pixel update applied between the
+    // snapshot and the event loop starting is buffered in the receiver rather
+    // than lost. Re-applying a buffered update over the snapshot is idempotent.
     let broadcast_rx = state.subscribe_canvas_events(canvas_id).await?;
+    let snapshot_pixels = state.snapshot_pixels(canvas_id).await?;
 
     let snapshot = CanvasStateSnapshot {
         canvas,
@@ -136,9 +139,12 @@ async fn handle_socket(
 
                                 match state.apply_pixel_update(canvas_id, event).await {
                                     Ok(update_result) => {
-                                        // Persist writes in a spawned task so websocket broadcasting stays non-blocking;
-                                        // clients receive updates immediately while DB durability catches up asynchronously.
-                                        persist_pixel_async(state.db.clone(), update_result.updated_pixel);
+                                        // Enqueue the write into the batched write-behind worker. The bounded
+                                        // channel applies backpressure instead of spawning an unbounded task per
+                                        // edit, while broadcasting stays on the hot path so clients update live.
+                                        if let Err(error) = state.pixel_writer.send(update_result.updated_pixel).await {
+                                            error!(canvas_id = %canvas_id, session_id = %session_id, %error, "failed to enqueue pixel for persistence");
+                                        }
 
                                         // We intentionally broadcast back to the sender so every client, including
                                         // the originator, reconciles against authoritative server state.
@@ -147,7 +153,9 @@ async fn handle_socket(
                                         }
 
                                         if let Some(rejected) = update_result.rejected {
-                                            let _ = state.broadcast_event(canvas_id, rejected).await;
+                                            if let Err(error) = state.broadcast_event(canvas_id, rejected).await {
+                                                warn!(canvas_id = %canvas_id, session_id = %session_id, %error, "failed to broadcast pixel rejection");
+                                            }
                                         }
                                     }
                                     Err(error) => {
@@ -211,30 +219,6 @@ async fn send_snapshot(
         .send(Message::Text(payload.into()))
         .await
         .map_err(|error| AppError::InternalError(format!("failed to send canvas snapshot: {error}")))
-}
-
-fn persist_pixel_async(pool: sqlx::PgPool, pixel: Pixel) {
-    tokio::spawn(async move {
-        let result = sqlx::query(
-            "INSERT INTO pixels (id, canvas_id, x, y, color, updated_at, updated_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (canvas_id, x, y)
-             DO UPDATE SET color = EXCLUDED.color, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
-        )
-        .bind(pixel.id)
-        .bind(pixel.canvas_id)
-        .bind(pixel.x)
-        .bind(pixel.y)
-        .bind(pixel.color)
-        .bind(pixel.updated_at)
-        .bind(pixel.updated_by)
-        .execute(&pool)
-        .await;
-
-        if let Err(error) = result {
-            error!(%error, "failed to persist pixel update");
-        }
-    });
 }
 
 fn map_outbound_event(event: &CanvasEvent, session_id: Uuid) -> Option<WsOutboundMessage> {

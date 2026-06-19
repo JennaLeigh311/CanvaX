@@ -1,5 +1,5 @@
 // REST client helpers for backend endpoints used by the frontend app.
-import type { Canvas, CanvasStateSnapshot, HealthResponse, Pixel } from '../types'
+import type { Canvas, CanvasStateSnapshot, Classroom, HealthResponse, Pixel } from '../types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8080'
 
@@ -8,6 +8,13 @@ type ApiCanvas = {
   name: string
   width: number
   height: number
+  classroom_id?: string | null
+  created_at?: string
+}
+
+type ApiClassroom = {
+  id: string
+  name: string
   created_at?: string
 }
 
@@ -29,6 +36,12 @@ const toCanvas = (canvas: ApiCanvas): Canvas => ({
   width: canvas.width,
   height: canvas.height,
   createdAt: canvas.created_at ?? new Date().toISOString(),
+})
+
+const toClassroom = (classroom: ApiClassroom): Classroom => ({
+  id: classroom.id,
+  name: classroom.name,
+  createdAt: classroom.created_at ?? new Date().toISOString(),
 })
 
 const toPixel = (pixel: ApiPixel): Pixel => ({
@@ -62,6 +75,55 @@ export async function createCanvas(name: string, width: number, height: number):
   })
 
   const canvas = await parseJson<ApiCanvas>(response, 'Create canvas')
+  return toCanvas(canvas)
+}
+
+export async function createClassroom(name: string): Promise<Classroom> {
+  const response = await fetch(`${API_BASE_URL}/api/classrooms`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  })
+
+  const classroom = await parseJson<ApiClassroom>(response, 'Create classroom')
+  return toClassroom(classroom)
+}
+
+export async function getClassrooms(): Promise<Classroom[]> {
+  const response = await fetch(`${API_BASE_URL}/api/classrooms`)
+  const classrooms = await parseJson<ApiClassroom[]>(response, 'List classrooms')
+  return classrooms.map(toClassroom)
+}
+
+export async function getClassroom(id: string): Promise<Classroom> {
+  const response = await fetch(`${API_BASE_URL}/api/classrooms/${id}`)
+  const classroom = await parseJson<ApiClassroom>(response, 'Get classroom')
+  return toClassroom(classroom)
+}
+
+export async function getClassroomCanvases(classroomId: string): Promise<Canvas[]> {
+  const response = await fetch(`${API_BASE_URL}/api/classrooms/${classroomId}/canvases`)
+  const canvases = await parseJson<ApiCanvas[]>(response, 'List classroom canvases')
+  return canvases.map(toCanvas)
+}
+
+export async function createClassroomCanvas(
+  classroomId: string,
+  name: string,
+  width: number,
+  height: number,
+): Promise<Canvas> {
+  const response = await fetch(`${API_BASE_URL}/api/classrooms/${classroomId}/canvases`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name, width, height }),
+  })
+
+  const canvas = await parseJson<ApiCanvas>(response, 'Create classroom canvas')
   return toCanvas(canvas)
 }
 

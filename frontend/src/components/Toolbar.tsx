@@ -31,6 +31,7 @@ function Toolbar({ selectedColor, onColorChange }: ToolbarProps) {
         </label>
         <input
           id="color-picker"
+          className="color-picker-input"
           type="color"
           value={selectedColor}
           onChange={(event) => onColorChange(event.target.value)}

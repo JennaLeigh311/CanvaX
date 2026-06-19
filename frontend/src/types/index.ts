@@ -17,6 +17,18 @@ export interface Canvas {
 }
 
 /**
+ * Classroom metadata returned by the backend.
+ */
+export interface Classroom {
+  /** Unique classroom identifier. */
+  id: string
+  /** Human-readable classroom name. */
+  name: string
+  /** ISO timestamp for when the classroom was created. */
+  createdAt: string
+}
+
+/**
  * Pixel state exchanged between backend and frontend.
  */
 export interface Pixel {
